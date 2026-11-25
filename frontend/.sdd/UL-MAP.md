@@ -14,7 +14,13 @@ Field names follow the shared API contract §4 so frontend and backend speak the
 
 | Domain Term | Technical Name | User-Facing Label | Definition & Business Rules | Status |
 | :--- | :--- | :--- | :--- | :--- |
-| Owner | — | 我 / 登入 | The single human user; signs in with username + password | Confirmed |
+| Owner | — | 我 / 登入 | The single human user; v2: signs in with **email** + password on the board's own sign-in page | Confirmed |
+| Access token (pass) | `Session.accessToken` | — | Short-lived (15 min) pass kept in page memory only | Confirmed |
+| Renewal pass | refresh cookie | — | HttpOnly cookie the browser keeps; renewing replaces it; never read by scripts | Confirmed |
+| Sign-in round trip | authorization code + PKCE | — | One-off secret (`code_verifier`) and marker (`state`) made before sign-in; return page `/auth/callback` checks and trades them | Confirmed |
+| Member key | `ApiKey` | API 金鑰 | One agent-team member's key; shown once at creation; active / revoked | Confirmed |
+| Member name | `memberName` | 成員名稱 | 1–40 characters, unique among active keys | Confirmed |
+| Publisher | `publishedBy` | 發布者 | Member that published a card | Confirmed |
 | Daily Trade Card | `TradeCard` | 交易卡 | At most one per trade date; status trade or noTrade | Confirmed |
 | Trade Date | `tradeDate` | 交易日 | Asia/Taipei calendar date the orders are intended for | Confirmed |
 | Card Summary | `TradeCardSummary` | — | One row of the month's card list: trade date, status, buy count, sell count, filled order count | Confirmed |
