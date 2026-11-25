@@ -1,30 +1,20 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { onMounted } from 'vue'
 import { SignInReturnDto } from '~/domain/models/dto/sign-in-return-dto'
-import { failureMessageOf } from '~/composables/failure-message'
 import AppAlert from '~/components/atoms/AppAlert.vue'
 import AppSpinner from '~/components/atoms/AppSpinner.vue'
-import { LOGIN_PATH } from '~/plugins/dependencies'
+import { LOGIN_PATH, useSignInFlow } from '~/composables/use-sign-in-flow'
 
 definePageMeta({ layout: false })
 
 // 板子把登入結果轉回這裡：比對標記、拿一次性授權碼換通行憑證，成功就進首頁。
-const { $userSessionApplication } = useNuxtApp()
 const route = useRoute()
-const errorMessage = ref<string | null>(null)
+const { errorMessage, completeSignIn } = useSignInFlow(useNuxtApp().$userSessionApplication, navigateTo)
 
-onMounted(async () => {
-  try {
-    await $userSessionApplication.completeSignIn(new SignInReturnDto(
-      typeof route.query.code === 'string' ? route.query.code : '',
-      typeof route.query.state === 'string' ? route.query.state : '',
-    ))
-    await navigateTo('/', { replace: true })
-  }
-  catch (error: unknown) {
-    errorMessage.value = failureMessageOf(error)
-  }
-})
+onMounted(() => completeSignIn(new SignInReturnDto(
+  typeof route.query.code === 'string' ? route.query.code : '',
+  typeof route.query.state === 'string' ? route.query.state : '',
+)))
 </script>
 
 <template>

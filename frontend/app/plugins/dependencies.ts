@@ -18,13 +18,8 @@ import { MonthSummaryProxy } from '~/infrastructure/proxy/month-summary-proxy'
 import { OrderProxy } from '~/infrastructure/proxy/order-proxy'
 import { PositionProxy } from '~/infrastructure/proxy/position-proxy'
 import { TradeCardProxy } from '~/infrastructure/proxy/trade-card-proxy'
+import { LOGIN_PATH, SIGN_IN_CALLBACK_PATH } from '~/composables/use-sign-in-flow'
 import { WebCryptoSignInChallengeProxy } from '~/infrastructure/proxy/web-crypto-sign-in-challenge-proxy'
-
-/** 登入畫面的路徑。中介層與被登出時的導頁都看這一個。 */
-export const LOGIN_PATH = '/login'
-
-/** 板子把登入結果轉回來的那一頁（要與板子設定的允許轉址網址完全一致）。 */
-export const SIGN_IN_CALLBACK_PATH = '/auth/callback'
 
 /**
  * 組裝根：唯一知道所有具體型別的地方。

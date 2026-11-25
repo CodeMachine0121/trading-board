@@ -2,10 +2,11 @@
 import { onMounted, ref } from 'vue'
 import AppButton from '~/components/atoms/AppButton.vue'
 import AppShell from '~/components/templates/AppShell.vue'
-import { LOGIN_PATH } from '~/plugins/dependencies'
+import { useSignInFlow } from '~/composables/use-sign-in-flow'
 
 // 登入後每一頁共用的外框：導覽五個畫面，右上角是登入中的電子郵件與登出。
 const { $userSessionApplication } = useNuxtApp()
+const { signOut } = useSignInFlow($userSessionApplication, navigateTo)
 const ownerEmail = ref('')
 
 const destinations = [
@@ -25,11 +26,6 @@ onMounted(async () => {
     console.warn('could not read the signed-in owner', error)
   }
 })
-
-async function signOut(): Promise<void> {
-  await $userSessionApplication.signOut()
-  await navigateTo(LOGIN_PATH)
-}
 </script>
 
 <template>

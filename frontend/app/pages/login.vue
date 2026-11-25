@@ -1,29 +1,11 @@
 <script setup lang="ts">
-import { ref } from 'vue'
-import type { CredentialsDto } from '~/domain/models/dto/credentials-dto'
-import { failureMessageOf } from '~/composables/failure-message'
 import LoginForm from '~/components/organisms/LoginForm.vue'
+import { useSignInFlow } from '~/composables/use-sign-in-flow'
 
 definePageMeta({ layout: false })
 
-const { $userSessionApplication } = useNuxtApp()
-const submitting = ref(false)
-const errorMessage = ref<string | null>(null)
-
 // 帳密對了，板子回一個要轉去的網址（帶一次性授權碼）；整頁跳過去，由 /auth/callback 收尾。
-async function signIn(credentialsDto: CredentialsDto): Promise<void> {
-  submitting.value = true
-  errorMessage.value = null
-
-  try {
-    const redirectTo = await $userSessionApplication.beginSignIn(credentialsDto)
-    await navigateTo(redirectTo, { external: true })
-  }
-  catch (error: unknown) {
-    errorMessage.value = failureMessageOf(error)
-    submitting.value = false
-  }
-}
+const { submitting, errorMessage, signIn } = useSignInFlow(useNuxtApp().$userSessionApplication, navigateTo)
 </script>
 
 <template>
