@@ -111,6 +111,9 @@ func (ledger TradeLedgerDomain) RequireHoldings(soldSharesBySymbol map[string]in
 
 	for _, symbol := range symbols {
 		heldShares := ledger.HeldShares(symbol)
+		if heldShares == 0 {
+			return ValidationFailed("sellExceedsHolding", fmt.Sprintf("目前沒有持有 %s，不能賣出", symbol))
+		}
 		if soldSharesBySymbol[symbol] > heldShares {
 			return ValidationFailed("sellExceedsHolding", fmt.Sprintf(
 				"%s 目前持有 %d 股，賣出委託合計 %d 股超過持股", symbol, heldShares, soldSharesBySymbol[symbol]))

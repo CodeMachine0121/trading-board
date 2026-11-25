@@ -198,6 +198,12 @@ func TestTradeLedgerDomainListsClosedHoldingsOfAMonth(t *testing.T) {
 
 	require.Len(t, november, 2)
 	assert.Equal(t, []string{"2330", "2303"}, []string{november[0].Symbol, november[1].Symbol})
+	// 2303: 550 - 1 - 501 = 48 (win); 2330: 650 - 1 - 701 = -52 (loss).
+	assert.Equal(t, "2026-11-24", *november[1].ClosedDate)
+	assert.Equal(t, "48", november[1].RealizedPnl.String())
+	assert.Equal(t, "win", *november[1].Result)
+	assert.Equal(t, "-52", november[0].RealizedPnl.String())
+	assert.Equal(t, "loss", *november[0].Result)
 	require.Len(t, every, 3)
 	assert.Equal(t, "3006", every[0].Symbol)
 }
@@ -305,14 +311,15 @@ func TestTradeLedgerDomainRequiresHoldingsForPublishedSales(t *testing.T) {
 	ledger := (&ledgerBook{}).add(buy, "3006", "2026-11-20", 50, "60", "2", "2026-11-20 09:05").ledgerAt("2026-11-25 20:00")
 
 	cases := []struct {
-		name       string
-		sales      map[string]int
-		isAccepted bool
+		name            string
+		sales           map[string]int
+		isAccepted      bool
+		expectedMessage string
 	}{
 		{name: "selling what is held", sales: map[string]int{"3006": 50}, isAccepted: true},
-		{name: "selling one share more than held", sales: map[string]int{"3006": 51}, isAccepted: false},
-		{name: "selling a stock not held", sales: map[string]int{"2330": 10}, isAccepted: false},
-		{name: "two sells together exceeding the holding", sales: map[string]int{"3006": 60}, isAccepted: false},
+		{name: "selling one share more than held", sales: map[string]int{"3006": 51}, expectedMessage: "超過持股"},
+		{name: "selling a stock not held", sales: map[string]int{"2330": 10}, expectedMessage: "目前沒有持有 2330"},
+		{name: "two sells together exceeding the holding", sales: map[string]int{"3006": 60}, expectedMessage: "超過持股"},
 	}
 
 	for _, testCase := range cases {
@@ -324,7 +331,7 @@ func TestTradeLedgerDomainRequiresHoldingsForPublishedSales(t *testing.T) {
 				return
 			}
 			require.ErrorIs(t, holdingError, domains.ErrValidation)
-			assert.Contains(t, holdingError.Error(), "超過持股")
+			assert.Contains(t, holdingError.Error(), testCase.expectedMessage)
 		})
 	}
 }

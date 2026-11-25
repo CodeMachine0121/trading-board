@@ -196,6 +196,18 @@ func TestTradeOrderApplicationSkipsOrders(t *testing.T) {
 			require.NoError(t, skipError)
 			assert.Equal(t, testCase.expectedStatus, orderDto.Status)
 			assert.Equal(t, testCase.expectedFilled, orderDto.FilledShares)
+
+			// The skip changes no fill, so whatever filled is still held.
+			skippedOrder := testCase.order
+			skippedOrder.IsSkipped = true
+			testHarness.withFillLog("2026-11-26", skippedOrder)
+			positions, listError := testHarness.portfolioApplication.ListPositions(t.Context(), dto.PositionQueryDto{})
+			require.NoError(t, listError)
+			heldShares := 0
+			for _, position := range positions {
+				heldShares += position.Shares
+			}
+			assert.Equal(t, testCase.expectedFilled, heldShares)
 		})
 	}
 }

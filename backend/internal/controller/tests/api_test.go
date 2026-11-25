@@ -76,7 +76,11 @@ func TestReadingRequiresAPassOrTheAgentKey(t *testing.T) {
 			assert.Equal(t, testCase.expectedStatus, result.status)
 			if testCase.expectedStatus == http.StatusUnauthorized {
 				assert.Equal(t, "unauthenticated", errorCodeOf(result))
+				return
 			}
+			assert.Equal(t, "2026-11-26", result.body["tradeDate"])
+			buyOrder := result.body["buyOrders"].([]any)[0].(map[string]any)
+			assert.Equal(t, "order-1", buyOrder["id"])
 		})
 	}
 }
