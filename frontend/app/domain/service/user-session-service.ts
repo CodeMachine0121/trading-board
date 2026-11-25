@@ -54,38 +54,11 @@ export class UserSessionService {
     }
   }
 
-  /** 打開頁面時：手上沒有通行憑證就試著續期一次。續不到就是沒登入。 */
-  async restoreSession(): Promise<boolean> {
-    return (await this.usableAccessToken()) !== null
-  }
-
-  /** 給每一發請求用：剩不到一分鐘就先續期；續不到回 `null`（那一發就不帶憑證，板子會說沒登入）。 */
+  /**
+   * 給每一發請求、也給打開頁面時用：剩不到一分鐘（或手上沒有）就先續期，同一時間只續一次；
+   * 續不到回 `null`（那一發就不帶憑證，板子會說沒登入）。
+   */
   async accessToken(): Promise<string | null> {
-    return this.usableAccessToken()
-  }
-
-  /** 登出在畫面上一定成功：板子連不上也照樣忘掉這一頁的登入。 */
-  async signOut(): Promise<void> {
-    this.sessionStorageProxy.clearSession()
-    try {
-      await this.authProxy.revoke()
-    }
-    catch (error: unknown) {
-      // 板子沒收到也只是那段續期憑證留到它自己過期；畫面上已經登出了。
-      console.warn('sign-out could not reach the board', error)
-    }
-  }
-
-  /** 被板子告知登入不算數時：只忘掉這一頁的登入，不必再去煩板子。 */
-  forgetSession(): void {
-    this.sessionStorageProxy.clearSession()
-  }
-
-  async fetchCurrentOwner(): Promise<OwnerDto> {
-    return (await this.authProxy.fetchCurrentOwner()).toDto()
-  }
-
-  private async usableAccessToken(): Promise<string | null> {
     const session = this.sessionStorageProxy.readSession()
     if (session !== null && !session.toDomain().needsRenewalAt(new Date())) {
       return session.accessToken
@@ -108,5 +81,26 @@ export class UserSessionService {
       })
 
     return this.renewal
+  }
+
+  /** 登出在畫面上一定成功：板子連不上也照樣忘掉這一頁的登入。 */
+  async signOut(): Promise<void> {
+    this.sessionStorageProxy.clearSession()
+    try {
+      await this.authProxy.revoke()
+    }
+    catch (error: unknown) {
+      // 板子沒收到也只是那段續期憑證留到它自己過期；畫面上已經登出了。
+      console.warn('sign-out could not reach the board', error)
+    }
+  }
+
+  /** 被板子告知登入不算數時：只忘掉這一頁的登入，不必再去煩板子。 */
+  forgetSession(): void {
+    this.sessionStorageProxy.clearSession()
+  }
+
+  async fetchCurrentOwner(): Promise<OwnerDto> {
+    return (await this.authProxy.fetchCurrentOwner()).toDto()
   }
 }

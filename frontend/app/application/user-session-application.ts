@@ -16,8 +16,9 @@ export class UserSessionApplication {
     return this.userSessionService.completeSignIn(signInReturnDto)
   }
 
+  /** 打開頁面時：手上沒有通行憑證就試著續期一次。拿得到通行憑證就是登入中。 */
   async restoreSession(): Promise<boolean> {
-    return this.userSessionService.restoreSession()
+    return (await this.userSessionService.accessToken()) !== null
   }
 
   async accessToken(): Promise<string | null> {
