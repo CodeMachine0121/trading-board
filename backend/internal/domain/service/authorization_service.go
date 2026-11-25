@@ -18,11 +18,8 @@ const (
 )
 
 // AuthorizationService is the board's own OAuth 2.0 authorization server for its one public client.
-//
-// Each use case runs inside ITransactionRepository.Exclusively, so "use a code once", "rotate a refresh token once"
-// and the sign-in lock cannot race. Some refusals must still keep what they wrote (a recorded failure, a used-up
-// code, a revoked family): those are carried out of the transaction as the refusal value instead of being returned
-// from the work, which would roll the write back.
+// Each use case runs alone (see exclusivelyKeepingRefusals), so "use a code once", "rotate a refresh token once"
+// and the sign-in lock cannot race.
 type AuthorizationService struct {
 	ownerAccount          domains.OwnerAccountDomain
 	client                vo.OAuthClientVo
@@ -76,46 +73,40 @@ func (authorizationService *AuthorizationService) Authorize(
 	}
 
 	var redirectDto dto.AuthorizationRedirectDto
-	var refusal error
-	workError := authorizationService.transactionRepository.Exclusively(executionContext,
-		func(transactionContext context.Context) error {
-			now := authorizationService.clockProxy.Now()
+	authorizeError := authorizationService.exclusivelyKeepingRefusals(executionContext,
+		func(transactionContext context.Context, now time.Time) (error, error) {
 			latestFailures, listError := authorizationService.signInFailures.ListLatest(
 				transactionContext, domains.SignInFailuresConsidered)
 			if listError != nil {
-				return listError
+				return nil, listError
 			}
 			if domains.NewSignInThrottleDomain(latestFailures).IsLockedAt(now) {
-				refusal = domains.TemporarilyUnavailable(lockedDescription)
-				return nil
+				return domains.TemporarilyUnavailable(lockedDescription), nil
 			}
 
 			emailMatches := authorizationService.ownerAccount.MatchesEmail(requestDto.Email)
 			passwordMatches := authorizationService.passwordHashProxy.Matches(
 				authorizationService.ownerAccount.PasswordHash(), requestDto.Password)
 			if !emailMatches || !passwordMatches {
-				refusal = domains.AccessDenied(wrongCredentialsDescription)
-				return authorizationService.signInFailures.Record(transactionContext, now)
+				return domains.AccessDenied(wrongCredentialsDescription),
+					authorizationService.signInFailures.Record(transactionContext, now)
 			}
 			if clearError := authorizationService.signInFailures.Clear(transactionContext); clearError != nil {
-				return clearError
+				return nil, clearError
 			}
 
 			code := domains.NewOpaqueSecretDomain(authorizationService.randomTokenProxy.NewToken())
 			if createError := authorizationService.authorizationCodes.Create(transactionContext,
 				authorizationRequest.ToAuthorizationCode(code, now, authorizationService.policy.AuthorizationCodeLifetime),
 			); createError != nil {
-				return createError
+				return nil, createError
 			}
 			redirectDto = authorizationRequest.ToRedirectDto(code)
 
-			return nil
+			return nil, nil
 		})
-	if workError != nil {
-		return dto.AuthorizationRedirectDto{}, workError
-	}
-	if refusal != nil {
-		return dto.AuthorizationRedirectDto{}, refusal
+	if authorizeError != nil {
+		return dto.AuthorizationRedirectDto{}, authorizeError
 	}
 
 	return redirectDto, nil
@@ -126,37 +117,31 @@ func (authorizationService *AuthorizationService) ExchangeCode(
 	executionContext context.Context, exchangeDto dto.CodeExchangeDto,
 ) (dto.TokenSetDto, error) {
 	var tokenSet dto.TokenSetDto
-	var refusal error
-	workError := authorizationService.transactionRepository.Exclusively(executionContext,
-		func(transactionContext context.Context) error {
-			now := authorizationService.clockProxy.Now()
+	exchangeError := authorizationService.exclusivelyKeepingRefusals(executionContext,
+		func(transactionContext context.Context, now time.Time) (error, error) {
 			code, isFound, findError := authorizationService.authorizationCodes.FindByDigest(
 				transactionContext, domains.NewOpaqueSecretDomain(exchangeDto.Code).Digest())
 			if findError != nil {
-				return findError
+				return nil, findError
 			}
 			authorizationCode := domains.NewAuthorizationCodeDomain(code)
 			if exchangeDto.Code == "" || !isFound || authorizationCode.IsConsumed() {
-				refusal = domains.InvalidGrant("授權碼無效或已過期")
-				return nil
+				return domains.InvalidGrant("授權碼無效或已過期"), nil
 			}
 			if markError := authorizationService.authorizationCodes.MarkConsumed(transactionContext, code.ID, now); markError != nil {
-				return markError
+				return nil, markError
 			}
-			if refusal = authorizationCode.Redeem(exchangeDto, now); refusal != nil {
-				return nil
+			if refusal := authorizationCode.Redeem(exchangeDto, now); refusal != nil {
+				return refusal, nil
 			}
 
 			issued, issueError := authorizationService.issueTokens(transactionContext, "", now)
 			tokenSet = issued
 
-			return issueError
+			return nil, issueError
 		})
-	if workError != nil {
-		return dto.TokenSetDto{}, workError
-	}
-	if refusal != nil {
-		return dto.TokenSetDto{}, refusal
+	if exchangeError != nil {
+		return dto.TokenSetDto{}, exchangeError
 	}
 
 	return tokenSet, nil
@@ -171,43 +156,36 @@ func (authorizationService *AuthorizationService) Refresh(
 	}
 
 	var tokenSet dto.TokenSetDto
-	var refusal error
-	workError := authorizationService.transactionRepository.Exclusively(executionContext,
-		func(transactionContext context.Context) error {
-			now := authorizationService.clockProxy.Now()
+	refreshError := authorizationService.exclusivelyKeepingRefusals(executionContext,
+		func(transactionContext context.Context, now time.Time) (error, error) {
 			stored, isFound, findError := authorizationService.refreshTokens.FindByDigest(
 				transactionContext, domains.NewOpaqueSecretDomain(refreshToken).Digest())
 			if findError != nil {
-				return findError
+				return nil, findError
 			}
 			if !isFound {
-				refusal = domains.InvalidGrant(signInEndedDescription)
-				return nil
+				return domains.InvalidGrant(signInEndedDescription), nil
 			}
 
 			presented := domains.NewRefreshTokenDomain(stored)
 			if presented.IsReplaced() {
-				refusal = domains.InvalidGrant(signInEndedDescription)
-				return authorizationService.refreshTokens.RevokeFamily(transactionContext, presented.FamilyID(), now)
+				return domains.InvalidGrant(signInEndedDescription),
+					authorizationService.refreshTokens.RevokeFamily(transactionContext, presented.FamilyID(), now)
 			}
 			if !presented.AdmitsAt(now) {
-				refusal = domains.InvalidGrant(signInEndedDescription)
-				return nil
+				return domains.InvalidGrant(signInEndedDescription), nil
 			}
 			if markError := authorizationService.refreshTokens.MarkRotated(transactionContext, stored.ID, now); markError != nil {
-				return markError
+				return nil, markError
 			}
 
 			issued, issueError := authorizationService.issueTokens(transactionContext, presented.FamilyID(), now)
 			tokenSet = issued
 
-			return issueError
+			return nil, issueError
 		})
-	if workError != nil {
-		return dto.TokenSetDto{}, workError
-	}
-	if refusal != nil {
-		return dto.TokenSetDto{}, refusal
+	if refreshError != nil {
+		return dto.TokenSetDto{}, refreshError
 	}
 
 	return tokenSet, nil
@@ -257,4 +235,26 @@ func (authorizationService *AuthorizationService) issueTokens(
 		RefreshToken:          refreshToken.Value(),
 		RefreshTokenExpiresAt: storedToken.ExpiresAt,
 	}, nil
+}
+
+// exclusivelyKeepingRefusals runs work alone in one transaction. Work answers (refusal, failure): a failure rolls
+// everything back, while a refusal commits what work wrote first — a recorded sign-in failure, a used-up code, a
+// revoked family — and is then answered. Returning the refusal as a failure would roll those writes back.
+func (authorizationService *AuthorizationService) exclusivelyKeepingRefusals(
+	executionContext context.Context,
+	work func(transactionContext context.Context, now time.Time) (refusal error, failure error),
+) error {
+	var refusal error
+	failure := authorizationService.transactionRepository.Exclusively(executionContext,
+		func(transactionContext context.Context) error {
+			workRefusal, workFailure := work(transactionContext, authorizationService.clockProxy.Now())
+			refusal = workRefusal
+
+			return workFailure
+		})
+	if failure != nil {
+		return failure
+	}
+
+	return refusal
 }

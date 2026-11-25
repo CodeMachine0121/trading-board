@@ -103,8 +103,8 @@ func newApi(t *testing.T) *api {
 	router.NewRouter(
 		middlewares.NewCorsMiddleware([]string{trustedOrigin}),
 		middlewares.NewAuthenticationMiddleware(authenticationApplication, errorPresenter, callerContext),
-		controller.NewAuthorizationController(authorizationApplication, errorPresenter,
-			controller.RefreshCookieSettings{Domain: "", IsSecure: true}, []string{trustedOrigin}),
+		controller.NewAuthorizationController(authorizationApplication, errorPresenter, controller.NewRefreshTokenCookie(
+			controller.RefreshCookieSettings{Domain: "", IsSecure: true}, []string{trustedOrigin})),
 		controller.NewAuthenticationController(authenticationApplication),
 		controller.NewApiKeyController(application.NewApiKeyApplication(service.NewApiKeyService(
 			testApi.apiKeyRepository, transactionRepository, testApi.randomTokenProxy, clockProxy, calendar)), errorPresenter),

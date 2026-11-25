@@ -51,10 +51,10 @@ func newRouter(database *gorm.DB, applicationConfig config.ApplicationConfig) *r
 	return router.NewRouter(
 		middlewares.NewCorsMiddleware(applicationConfig.CorsAllowedOrigins),
 		middlewares.NewAuthenticationMiddleware(authenticationApplication, errorPresenter, callerContext),
-		controller.NewAuthorizationController(authorizationApplication, errorPresenter,
+		controller.NewAuthorizationController(authorizationApplication, errorPresenter, controller.NewRefreshTokenCookie(
 			controller.RefreshCookieSettings{
 				Domain: applicationConfig.RefreshCookie.Domain, IsSecure: applicationConfig.RefreshCookie.IsSecure,
-			}, applicationConfig.CorsAllowedOrigins),
+			}, applicationConfig.CorsAllowedOrigins)),
 		controller.NewAuthenticationController(authenticationApplication),
 		controller.NewApiKeyController(apiKeyApplication, errorPresenter),
 		controller.NewTradeCardController(tradeCardApplication, errorPresenter, callerContext),
