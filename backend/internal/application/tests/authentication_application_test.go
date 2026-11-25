@@ -69,6 +69,19 @@ func TestAuthenticationApplicationRefreshesLastUsedAtMostOnceAMinute(t *testing.
 	}
 }
 
+func TestAuthenticationApplicationTreatsACallerWithBothAKeyAndAnAccessTokenAsTheMember(t *testing.T) {
+	testHarness := newHarness(t, "2026-11-25 20:00")
+	testHarness.apiKeyRepository.EXPECT().FindByDigest(gomock.Any(), digestOf(memberKey)).
+		Return(anActiveKey("desk-chief", at(taipeiTime("2026-11-25 20:00"))), true, nil)
+	testHarness.accessTokenProxy.EXPECT().Verify(gomock.Any()).Return(vo.AccessTokenClaimsVo{Subject: "owner"}, nil).AnyTimes()
+
+	caller, identifyError := testHarness.authenticationApplication.IdentifyCaller(t.Context(),
+		dto.CallerCredentialDto{ApiKey: memberKey, AccessToken: "good"})
+
+	require.NoError(t, identifyError)
+	assert.Equal(t, dto.CallerDto{Role: "agent", Name: "desk-chief"}, caller)
+}
+
 func TestAuthenticationApplicationIdentifiesTheOwnerByAccessToken(t *testing.T) {
 	cases := []struct {
 		name       string

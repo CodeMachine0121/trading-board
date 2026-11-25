@@ -111,6 +111,35 @@ func TestAuthorizationApplicationRefusesWrongCredentialsAlike(t *testing.T) {
 	}
 }
 
+func TestAuthorizationApplicationAdmitsNobodyWhileTheOwnerAccountIsNotSet(t *testing.T) {
+	cases := []struct {
+		name    string
+		account vo.OwnerAccountVo
+	}{
+		{name: "no email set", account: vo.OwnerAccountVo{PasswordHash: ownerPasswordHash}},
+		{name: "no password hash set", account: vo.OwnerAccountVo{Email: ownerEmail}},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			testHarness := newHarness(t, "2026-11-25 20:00").withOwnerAccount(testCase.account)
+			testHarness.failureRepository.EXPECT().ListLatest(gomock.Any(), 5).Return(nil, nil)
+			// Even a proxy that would accept the password cannot open an unconfigured account.
+			testHarness.passwordHashProxy.EXPECT().Matches(gomock.Any(), gomock.Any()).Return(true).AnyTimes()
+			testHarness.failureRepository.EXPECT().Record(gomock.Any(), gomock.Any()).Return(nil)
+			request := anAuthorizationRequest()
+			request.Email = ""
+			if testCase.account.Email != "" {
+				request.Email = ownerEmail
+			}
+
+			_, authorizeError := testHarness.authorizationApplication.Authorize(t.Context(), request)
+
+			requireOAuthError(t, authorizeError, "access_denied", "電子郵件或密碼錯誤")
+		})
+	}
+}
+
 func TestAuthorizationApplicationLocksSignInAfterFiveFailuresWithinFifteenMinutes(t *testing.T) {
 	fiveFailuresEndingAt2000 := failuresAt("2026-11-25 20:00:00", "2026-11-25 19:58:00", "2026-11-25 19:55:00",
 		"2026-11-25 19:50:00", "2026-11-25 19:46:00")

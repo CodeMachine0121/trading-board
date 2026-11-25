@@ -49,17 +49,19 @@ func TestApiKeyApplicationCreatesAKeyShownOnce(t *testing.T) {
 
 func TestApiKeyApplicationValidatesTheMemberName(t *testing.T) {
 	cases := []struct {
-		name         string
-		memberName   string
-		note         string
-		expectsValid bool
+		name            string
+		memberName      string
+		note            string
+		expectsValid    bool
+		expectedMessage string
 	}{
 		{name: "a 40-character member name", memberName: strings.Repeat("a", 40), expectsValid: true},
 		{name: "a 40-character name in Chinese", memberName: strings.Repeat("顧", 40), expectsValid: true},
-		{name: "a 41-character member name", memberName: strings.Repeat("a", 41)},
-		{name: "a member name of only spaces", memberName: "   "},
+		{name: "a 41-character member name", memberName: strings.Repeat("a", 41), expectedMessage: "成員名稱須為 1 到 40 個字"},
+		{name: "a member name of only spaces", memberName: "   ", expectedMessage: "成員名稱須為 1 到 40 個字"},
 		{name: "a note of 200 characters", memberName: "desk-chief", note: strings.Repeat("n", 200), expectsValid: true},
-		{name: "a note of 201 characters", memberName: "desk-chief", note: strings.Repeat("n", 201)},
+		{name: "a note of 201 characters", memberName: "desk-chief", note: strings.Repeat("n", 201),
+			expectedMessage: "備註最多 200 個字"},
 	}
 
 	for _, testCase := range cases {
@@ -71,14 +73,17 @@ func TestApiKeyApplicationValidatesTheMemberName(t *testing.T) {
 				testHarness.storesKeys()
 			}
 
-			_, createError := testHarness.apiKeyApplication.Create(t.Context(),
+			created, createError := testHarness.apiKeyApplication.Create(t.Context(),
 				dto.ApiKeyCreateDto{MemberName: testCase.memberName, Note: testCase.note})
 
 			if testCase.expectsValid {
-				assert.NoError(t, createError)
+				require.NoError(t, createError)
+				assert.Equal(t, testCase.memberName, created.MemberName)
+				assert.Equal(t, "active", created.Status)
 				return
 			}
 			assert.ErrorIs(t, createError, domains.ErrValidation)
+			assert.EqualError(t, createError, testCase.expectedMessage)
 		})
 	}
 }

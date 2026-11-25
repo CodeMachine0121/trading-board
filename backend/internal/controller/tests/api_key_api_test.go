@@ -32,6 +32,7 @@ func TestOwnerOnlyRoutesRefuseMemberKeysAndStrangers(t *testing.T) {
 
 			assert.Equal(t, http.StatusForbidden, asMember.status)
 			assert.Equal(t, "forbidden", errorCodeOf(asMember))
+			assert.Equal(t, "只有登入的擁有者可以使用", errorMessageOf(asMember))
 			assert.Equal(t, http.StatusUnauthorized, anonymous.status)
 			assert.Equal(t, "unauthenticated", errorCodeOf(anonymous))
 		})

@@ -68,6 +68,7 @@ func TestOnlyTheAgentKeyPublishes(t *testing.T) {
 
 	assert.Equal(t, http.StatusUnauthorized, asOwnerResult.status)
 	assert.Equal(t, "unauthenticated", errorCodeOf(asOwnerResult))
+	assert.Equal(t, "只有顧問團隊的 API 金鑰可以發布交易卡", errorMessageOf(asOwnerResult))
 	assert.Equal(t, http.StatusUnauthorized, anonymous.status)
 }
 

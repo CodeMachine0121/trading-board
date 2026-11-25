@@ -155,3 +155,16 @@ func aHeldBuyOrder(symbol string, shares int, price string, fee string, filledAt
 func gomockAny() gomock.Matcher {
 	return gomock.Any()
 }
+
+// withOwnerAccount rebuilds the sign-in over another configured owner account (for example none at all).
+func (testHarness *harness) withOwnerAccount(account vo.OwnerAccountVo) *harness {
+	testHarness.authorizationApplication = application.NewAuthorizationApplication(service.NewAuthorizationService(
+		domains.NewOwnerAccountDomain(account), vo.OAuthClientVo{ClientID: clientID, RedirectUris: []string{redirectUri}},
+		vo.AuthorizationPolicyVo{AuthorizationCodeLifetime: time.Minute, AccessTokenLifetime: 15 * time.Minute,
+			RefreshTokenLifetime: 30 * 24 * time.Hour},
+		testHarness.codeRepository, testHarness.refreshRepository, testHarness.failureRepository,
+		testHarness.transactionRepository, testHarness.passwordHashProxy, testHarness.randomTokenProxy,
+		testHarness.accessTokenProxy, testHarness.clockProxy))
+
+	return testHarness
+}

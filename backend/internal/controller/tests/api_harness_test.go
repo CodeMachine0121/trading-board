@@ -193,6 +193,13 @@ func errorCodeOf(result response) string {
 	return code
 }
 
+func errorMessageOf(result response) string {
+	errorBody, _ := result.body["error"].(map[string]any)
+	message, _ := errorBody["message"].(string)
+
+	return message
+}
+
 func storedCard() entities.TradeCard {
 	return entities.TradeCard{ID: "card-1", TradeDate: "2026-11-26", Status: "trade", Note: "note",
 		PublishedAt: time.Date(2026, 11, 25, 12, 0, 0, 0, time.UTC),
