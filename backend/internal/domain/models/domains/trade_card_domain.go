@@ -57,6 +57,7 @@ func NewPublishedTradeCardDomain(
 		Status:      publishDto.Status,
 		Note:        publishDto.Note,
 		PublishedAt: publishedAt,
+		PublishedBy: publishDto.PublishedBy,
 		Orders:      make([]entities.TradeOrder, 0, orderCount),
 	}
 
@@ -170,6 +171,7 @@ func (cardDomain TradeCardDomain) ToDto() dto.TradeCardDto {
 		BuyOrders:   []dto.OrderDto{},
 		SellOrders:  []dto.OrderDto{},
 		PublishedAt: cardDomain.card.PublishedAt.In(cardDomain.calendar.Location()),
+		PublishedBy: cardDomain.card.PublishedBy,
 	}
 
 	for _, order := range cardDomain.card.Orders {
@@ -185,7 +187,9 @@ func (cardDomain TradeCardDomain) ToDto() dto.TradeCardDto {
 }
 
 func (cardDomain TradeCardDomain) ToSummaryDto() dto.TradeCardSummaryDto {
-	summaryDto := dto.TradeCardSummaryDto{TradeDate: cardDomain.card.TradeDate, Status: cardDomain.card.Status}
+	summaryDto := dto.TradeCardSummaryDto{
+		TradeDate: cardDomain.card.TradeDate, Status: cardDomain.card.Status, PublishedBy: cardDomain.card.PublishedBy,
+	}
 	for _, order := range cardDomain.card.Orders {
 		if vo.OrderSideVo(order.Side) == vo.OrderSideSell {
 			summaryDto.SellCount++

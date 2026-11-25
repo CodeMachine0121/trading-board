@@ -21,4 +21,6 @@ type OrderDto struct {
 	Status               string           `json:"status"`
 	FilledShares         int              `json:"filledShares"`
 	Fills                []OrderFillDto   `json:"fills"`
+	// SkippedBy is empty unless the order was skipped (and for skips recorded before attribution existed).
+	SkippedBy string `json:"skippedBy"`
 }

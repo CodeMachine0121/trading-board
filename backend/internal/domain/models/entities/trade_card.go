@@ -9,6 +9,8 @@ type TradeCard struct {
 	Status      string    `gorm:"size:16;not null"`
 	Note        string    `gorm:"type:text;not null;default:''"`
 	PublishedAt time.Time `gorm:"type:timestamptz;not null"`
+	// PublishedBy is the publishing member's name; empty for cards published before attribution existed.
+	PublishedBy string `gorm:"size:160;not null;default:''"`
 
 	// Deleting a card takes its orders with it; replacing a card is only allowed while no order has a fill.
 	Orders []TradeOrder `gorm:"foreignKey:TradeCardID;constraint:OnDelete:CASCADE"`

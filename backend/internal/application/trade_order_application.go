@@ -22,7 +22,7 @@ func (orderApplication *TradeOrderApplication) ReportFill(
 }
 
 func (orderApplication *TradeOrderApplication) SkipOrder(
-	executionContext context.Context, orderID string,
+	executionContext context.Context, orderID string, skipDto dto.OrderSkipDto,
 ) (dto.OrderDto, error) {
-	return orderApplication.tradeOrderService.SkipOrder(executionContext, orderID)
+	return orderApplication.tradeOrderService.SkipOrder(executionContext, orderID, skipDto)
 }

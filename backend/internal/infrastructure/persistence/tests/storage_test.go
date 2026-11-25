@@ -47,6 +47,10 @@ func newTestDatabase(t *testing.T) *gorm.DB {
 	require.NoError(t, emptied.Delete(&entities.OrderFill{}).Error)
 	require.NoError(t, emptied.Delete(&entities.TradeOrder{}).Error)
 	require.NoError(t, emptied.Delete(&entities.TradeCard{}).Error)
+	require.NoError(t, emptied.Delete(&entities.AuthorizationCode{}).Error)
+	require.NoError(t, emptied.Delete(&entities.RefreshToken{}).Error)
+	require.NoError(t, emptied.Delete(&entities.ApiKey{}).Error)
+	require.NoError(t, emptied.Delete(&entities.SignInFailure{}).Error)
 
 	return database
 }
@@ -215,11 +219,15 @@ func TestTradeOrderRepositoryMarksAnOrderSkipped(t *testing.T) {
 	created, _ := persistence.NewTradeCardRepository(database).Create(t.Context(), aCard("2026-11-26", "2303"))
 	repository := persistence.NewTradeOrderRepository(database)
 
-	markError := repository.MarkSkipped(t.Context(), created.Orders[0].ID)
+	markError := repository.MarkSkipped(t.Context(), created.Orders[0].ID, "desk-chief")
+	againError := repository.MarkSkipped(t.Context(), created.Orders[0].ID, "owner")
 
 	require.NoError(t, markError)
+	require.NoError(t, againError)
 	order, _, _ := repository.FindByID(t.Context(), created.Orders[0].ID)
 	assert.True(t, order.IsSkipped)
+	// Skipping again leaves who skipped it first.
+	assert.Equal(t, "desk-chief", order.SkippedBy)
 }
 
 func TestRepositoriesReportStorageFailures(t *testing.T) {
@@ -234,7 +242,7 @@ func TestRepositoriesReportStorageFailures(t *testing.T) {
 	deleteError := cardRepository.Delete(t.Context(), "6f1c1e0e-8f9e-4c7e-9a43-0d3b6f0b1c2d")
 	_, _, orderError := orderRepository.FindByID(t.Context(), "6f1c1e0e-8f9e-4c7e-9a43-0d3b6f0b1c2d")
 	_, withFillsError := orderRepository.ListWithFills(t.Context())
-	markError := orderRepository.MarkSkipped(t.Context(), "6f1c1e0e-8f9e-4c7e-9a43-0d3b6f0b1c2d")
+	markError := orderRepository.MarkSkipped(t.Context(), "6f1c1e0e-8f9e-4c7e-9a43-0d3b6f0b1c2d", "owner")
 	_, fillError := fillRepository.Create(t.Context(), aFill("6f1c1e0e-8f9e-4c7e-9a43-0d3b6f0b1c2d", 1, time.Now()))
 	transactionError := persistence.NewTransactionRepository(database).Exclusively(t.Context(),
 		func(context.Context) error { return nil })
@@ -333,7 +341,8 @@ func TestSchemaMigratorSyncsEveryTableUnderItsLock(t *testing.T) {
 	})
 
 	require.NoError(t, exclusiveError)
-	assert.Equal(t, []string{"TradeCards", "TradeOrders", "OrderFills"}, migratedTables)
+	assert.Equal(t, []string{"TradeCards", "TradeOrders", "OrderFills", "AuthorizationCodes", "RefreshTokens",
+		"ApiKeys", "SignInFailures"}, migratedTables)
 }
 
 func TestSchemaMigratorReportsALockFailure(t *testing.T) {

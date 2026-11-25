@@ -2,12 +2,14 @@ package domains
 
 import "errors"
 
-// The four kinds every business refusal falls into; the controller maps each to one status code.
+// The kinds every business refusal falls into; the controller maps each to one status code.
 var (
 	ErrValidation             = errors.New("validation failed")
 	ErrNotFound               = errors.New("not found")
 	ErrConflict               = errors.New("conflict")
 	ErrAuthenticationRequired = errors.New("authentication required")
+	ErrForbidden              = errors.New("forbidden")
+	ErrTooManyAttempts        = errors.New("too many attempts")
 )
 
 // BusinessError carries the contract's error code and a message for the owner, and unwraps to its kind.
@@ -39,4 +41,8 @@ func Conflict(code string, message string) error {
 
 func AuthenticationRequired(message string) error {
 	return BusinessError{kind: ErrAuthenticationRequired, Code: "unauthenticated", Message: message}
+}
+
+func Forbidden(message string) error {
+	return BusinessError{kind: ErrForbidden, Code: "forbidden", Message: message}
 }

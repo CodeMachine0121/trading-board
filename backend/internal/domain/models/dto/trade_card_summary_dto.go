@@ -6,4 +6,5 @@ type TradeCardSummaryDto struct {
 	BuyCount         int    `json:"buyCount"`
 	SellCount        int    `json:"sellCount"`
 	FilledOrderCount int    `json:"filledOrderCount"`
+	PublishedBy      string `json:"publishedBy"`
 }

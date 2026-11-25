@@ -12,4 +12,6 @@ type OrderFillReportDto struct {
 	Shares   int
 	Fee      decimal.NullDecimal
 	FilledAt time.Time
+	// ReportedBy is the member name of the API key, or "owner".
+	ReportedBy string
 }

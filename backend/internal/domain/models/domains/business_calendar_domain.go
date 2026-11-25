@@ -63,3 +63,13 @@ func (calendar BusinessCalendarDomain) DaysBetween(fromDate string, toDate strin
 
 	return int(to.Sub(from).Hours() / 24)
 }
+
+// InLocation shows an optional instant in the business time zone; absent stays absent.
+func (calendar BusinessCalendarDomain) InLocation(instant *time.Time) *time.Time {
+	if instant == nil {
+		return nil
+	}
+	shown := instant.In(calendar.location)
+
+	return &shown
+}

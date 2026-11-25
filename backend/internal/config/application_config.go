@@ -29,14 +29,22 @@ func (databaseConfig DatabaseConfig) DataSourceName() string {
 		databaseConfig.Database, databaseConfig.SslMode)
 }
 
+// RefreshCookieConfig says how the refresh-token cookie is scoped: Domain empty means the API host only.
+type RefreshCookieConfig struct {
+	Domain   string
+	IsSecure bool
+}
+
 // ApplicationConfig is every setting, read once from the environment at start-up.
 type ApplicationConfig struct {
 	ServerPort            string
 	CorsAllowedOrigins    []string
 	Database              DatabaseConfig
-	AccessCredential      vo.AccessCredentialVo
+	OwnerAccount          vo.OwnerAccountVo
+	OAuthClient           vo.OAuthClientVo
+	AuthorizationPolicy   vo.AuthorizationPolicyVo
+	RefreshCookie         RefreshCookieConfig
 	AccessTokenSigningKey string
-	AccessTokenLifetime   time.Duration
 	FeeSchedule           vo.FeeScheduleVo
 	BudgetPolicy          vo.BudgetPolicyVo
 	BusinessTimeZone      *time.Location
@@ -55,13 +63,27 @@ func Load() ApplicationConfig {
 			Database: stringWithDefault("POSTGRES_DATABASE", "trading_board"),
 			SslMode:  stringWithDefault("POSTGRES_SSL_MODE", "disable"),
 		},
-		AccessCredential: vo.AccessCredentialVo{
-			OwnerUsername: os.Getenv("OWNER_USERNAME"),
-			OwnerPassword: os.Getenv("OWNER_PASSWORD"),
-			AgentApiKey:   os.Getenv("AGENT_API_KEY"),
+		OwnerAccount: vo.OwnerAccountVo{
+			Email:        os.Getenv("OWNER_EMAIL"),
+			PasswordHash: os.Getenv("OWNER_PASSWORD_HASH"),
+		},
+		OAuthClient: vo.OAuthClientVo{
+			ClientID:     stringWithDefault("OAUTH_CLIENT_ID", "trading-board-web"),
+			RedirectUris: listWithDefault("OAUTH_REDIRECT_URIS", []string{"http://localhost:3000/auth/callback"}),
+		},
+		AuthorizationPolicy: vo.AuthorizationPolicyVo{
+			AuthorizationCodeLifetime: time.Duration(
+				positiveIntWithDefault("AUTH_AUTHORIZATION_CODE_LIFETIME_SECONDS", 60)) * time.Second,
+			AccessTokenLifetime: time.Duration(
+				positiveIntWithDefault("AUTH_ACCESS_TOKEN_LIFETIME_MINUTES", 15)) * time.Minute,
+			RefreshTokenLifetime: time.Duration(
+				positiveIntWithDefault("AUTH_REFRESH_TOKEN_LIFETIME_DAYS", 30)) * 24 * time.Hour,
+		},
+		RefreshCookie: RefreshCookieConfig{
+			Domain:   strings.TrimSpace(os.Getenv("AUTH_REFRESH_COOKIE_DOMAIN")),
+			IsSecure: boolWithDefault("AUTH_REFRESH_COOKIE_SECURE", true),
 		},
 		AccessTokenSigningKey: os.Getenv("AUTH_ACCESS_TOKEN_SIGNING_KEY"),
-		AccessTokenLifetime:   time.Duration(positiveIntWithDefault("AUTH_ACCESS_TOKEN_LIFETIME_HOURS", 24)) * time.Hour,
 		FeeSchedule: vo.FeeScheduleVo{
 			BrokerFeeRate:      decimalWithDefault("FEE_BROKER_RATE", "0.001425"),
 			Discount:           decimalWithDefault("FEE_DISCOUNT", "0.6"),
@@ -102,6 +124,16 @@ func positiveIntWithDefault(name string, fallback int) int {
 	value, parseError := strconv.Atoi(stringWithDefault(name, strconv.Itoa(fallback)))
 	if parseError != nil || value <= 0 {
 		log.Printf("%s is not a positive whole number; using %d", name, fallback)
+		return fallback
+	}
+
+	return value
+}
+
+func boolWithDefault(name string, fallback bool) bool {
+	value, parseError := strconv.ParseBool(stringWithDefault(name, strconv.FormatBool(fallback)))
+	if parseError != nil {
+		log.Printf("%s is not true or false; using %t", name, fallback)
 		return fallback
 	}
 

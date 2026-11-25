@@ -26,6 +26,10 @@ func (schemaMigrator *SchemaMigrator) Migrate() ([]string, error) {
 		&entities.TradeCard{},
 		&entities.TradeOrder{},
 		&entities.OrderFill{},
+		&entities.AuthorizationCode{},
+		&entities.RefreshToken{},
+		&entities.ApiKey{},
+		&entities.SignInFailure{},
 	}
 
 	if migrateError := schemaMigrator.database.AutoMigrate(migratedEntities...); migrateError != nil {
@@ -36,6 +40,10 @@ func (schemaMigrator *SchemaMigrator) Migrate() ([]string, error) {
 		entities.TradeCard{}.TableName(),
 		entities.TradeOrder{}.TableName(),
 		entities.OrderFill{}.TableName(),
+		entities.AuthorizationCode{}.TableName(),
+		entities.RefreshToken{}.TableName(),
+		entities.ApiKey{}.TableName(),
+		entities.SignInFailure{}.TableName(),
 	}, nil
 }
 

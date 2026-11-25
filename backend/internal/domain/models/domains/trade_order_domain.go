@@ -77,18 +77,23 @@ func (orderDomain *TradeOrderDomain) ReportFill(
 		Amount:       amount,
 		FilledAt:     report.FilledAt,
 		RecordedAt:   recordedAt,
+		ReportedBy:   report.ReportedBy,
 	}
 	orderDomain.order.Fills = append(orderDomain.order.Fills, fill)
 
 	return fill, nil
 }
 
-// Skip refuses only a fully filled order; skipping one already skipped changes nothing.
-func (orderDomain *TradeOrderDomain) Skip() error {
-	if !orderDomain.order.IsSkipped && orderDomain.Status() == vo.OrderStatusFilled {
+// Skip refuses only a fully filled order; skipping one already skipped changes nothing, not even who skipped it.
+func (orderDomain *TradeOrderDomain) Skip(skipDto dto.OrderSkipDto) error {
+	if orderDomain.order.IsSkipped {
+		return nil
+	}
+	if orderDomain.Status() == vo.OrderStatusFilled {
 		return Conflict("orderAlreadyFilled", "這筆委託已全部成交，不能略過")
 	}
 	orderDomain.order.IsSkipped = true
+	orderDomain.order.SkippedBy = skipDto.SkippedBy
 
 	return nil
 }
@@ -110,6 +115,7 @@ func (orderDomain TradeOrderDomain) ToDto() dto.OrderDto {
 		Status:       string(orderDomain.Status()),
 		FilledShares: orderDomain.FilledShares(),
 		Fills:        fillDtos,
+		SkippedBy:    orderDomain.order.SkippedBy,
 	}
 
 	if vo.OrderSideVo(orderDomain.order.Side) == vo.OrderSideSell {

@@ -12,12 +12,15 @@ import (
 type TradeCardController struct {
 	tradeCardApplication *application.TradeCardApplication
 	errorPresenter       *ErrorPresenter
+	callerContext        *CallerContext
 }
 
 func NewTradeCardController(
-	tradeCardApplication *application.TradeCardApplication, errorPresenter *ErrorPresenter,
+	tradeCardApplication *application.TradeCardApplication, errorPresenter *ErrorPresenter, callerContext *CallerContext,
 ) *TradeCardController {
-	return &TradeCardController{tradeCardApplication: tradeCardApplication, errorPresenter: errorPresenter}
+	return &TradeCardController{
+		tradeCardApplication: tradeCardApplication, errorPresenter: errorPresenter, callerContext: callerContext,
+	}
 }
 
 func (cardController *TradeCardController) PublishCard(ginContext *gin.Context) {
@@ -34,8 +37,9 @@ func (cardController *TradeCardController) PublishCard(ginContext *gin.Context) 
 		return
 	}
 
-	cardDto, publishError := cardController.tradeCardApplication.PublishCard(
-		ginContext.Request.Context(), cardRequest.ToPublishDto(tradeDate))
+	publishDto := cardRequest.ToPublishDto(tradeDate)
+	publishDto.PublishedBy = cardController.callerContext.Caller(ginContext).Name
+	cardDto, publishError := cardController.tradeCardApplication.PublishCard(ginContext.Request.Context(), publishDto)
 	if publishError != nil {
 		cardController.errorPresenter.Respond(ginContext, publishError)
 		return

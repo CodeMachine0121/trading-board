@@ -26,6 +26,8 @@ type TradeOrder struct {
 	Reason               string              `gorm:"type:text;not null;default:''"`
 	IsMonthEndAllocation bool                `gorm:"not null;default:false"`
 	IsSkipped            bool                `gorm:"not null;default:false"`
+	// SkippedBy is the member name or "owner" that skipped the order.
+	SkippedBy string `gorm:"size:160;not null;default:''"`
 
 	// Restrict, not cascade: a fill is the record of money that moved and is never deleted with its order.
 	Fills []OrderFill `gorm:"foreignKey:TradeOrderID;constraint:OnDelete:RESTRICT"`

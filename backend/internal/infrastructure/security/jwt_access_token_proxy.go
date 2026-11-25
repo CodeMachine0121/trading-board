@@ -14,7 +14,7 @@ var accessTokenSigningMethod = jwt.SigningMethodHS256
 
 var errSigningKeyMissing = errors.New("access token signing key is not configured")
 
-// JwtAccessTokenProxy issues stateless signed passes, so a pass cannot be revoked before it expires.
+// JwtAccessTokenProxy issues stateless signed access tokens, so one cannot be revoked before it expires.
 type JwtAccessTokenProxy struct {
 	signingKey []byte
 }
