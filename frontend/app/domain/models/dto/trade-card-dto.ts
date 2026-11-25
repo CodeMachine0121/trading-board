@@ -12,5 +12,7 @@ export class TradeCardDto {
     readonly emptyBuyText: string,
     readonly emptySellText: string,
     readonly publishedAtText: string,
+    /** 「發布者：desk-chief」；不知道是誰發布的就是空字串，畫面不顯示這一行。 */
+    readonly publisherText: string = '',
   ) {}
 }

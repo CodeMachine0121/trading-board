@@ -36,6 +36,7 @@ export class TradeCardDomain {
       '無買進委託',
       '無賣出委託',
       this.card.publishedAt === null ? '' : `發布於 ${formatTaipeiDateTime(this.card.publishedAt)}`,
+      this.card.publishedBy === '' ? '' : `發布者：${this.card.publishedBy}`,
     )
   }
 }
