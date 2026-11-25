@@ -1,0 +1,12 @@
+# .env first: anything in the build context can end up readable in an image layer.
+.env
+.git
+.claude
+.sdd
+.idea
+.vscode
+.DS_Store
+bin
+*.out
+*.md
+Makefile

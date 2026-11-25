@@ -1,0 +1,252 @@
+# Backend CI for Trading Board, modelled on go-trading's ci.yml.
+#
+# The storage tests talk to a real PostgreSQL and skip themselves when TEST_POSTGRES_DSN is unset, so a laptop
+# stays green through anything they would have caught. This workflow therefore fails when they skip: a skipped
+# guard reads exactly like a passing one.
+
+name: Backend CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "backend/**"
+      - ".github/workflows/backend-ci.yml"
+  pull_request:
+    paths:
+      - "backend/**"
+      - ".github/workflows/backend-ci.yml"
+
+# A second push to the same branch makes the first run's answer worthless.
+concurrency:
+  group: backend-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    working-directory: backend
+
+env:
+  IMAGE: ghcr.io/codemachine0121/trading-board-backend
+
+jobs:
+  # Formatting, build, vet and stale mocks: everything that needs no database and no race detector.
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+
+      - run: go mod download
+
+      - name: gofmt
+        run: |
+          unformatted=$(gofmt -l ./cmd ./internal)
+          if [ -n "$unformatted" ]; then
+            echo "::error::not gofmt'd:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - name: go build
+        run: go build ./...
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: mocks match the interfaces they are generated from
+        run: |
+          go generate ./...
+          if ! git diff --quiet -- internal/domain/interface/mocks; then
+            echo "::error::the mocks are stale — run 'make mock' and commit the result"
+            git --no-pager diff --stat -- internal/domain/interface/mocks
+            exit 1
+          fi
+
+  # Every package except the storage tests, under the race detector.
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+
+      - name: go test
+        run: |
+          set -euo pipefail
+          # Listed first, so a package that fails to load fails the step instead of dropping out of the list.
+          packages=$(go list ./... | grep -v '/internal/infrastructure/persistence/tests$')
+          if [ -z "$packages" ]; then
+            echo "::error::go list found no packages to test"
+            exit 1
+          fi
+          go test $packages -count=1 -race
+
+  # The storage tests, once, against a real PostgreSQL — and proof that they ran rather than skipped.
+  storage:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_PASSWORD: testpass
+          POSTGRES_DB: trading_board_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d trading_board_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      # The database name has to end in _test: the storage tests empty every table and refuse anything else.
+      TEST_POSTGRES_DSN: >-
+        host=localhost port=5432 user=postgres password=testpass
+        dbname=trading_board_test sslmode=disable
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+
+      - name: the storage tests ran rather than skipped
+        run: |
+          set -o pipefail
+          go test ./internal/infrastructure/persistence/tests/ -count=1 -race -v | tee storage.log
+          if grep -aq -- '--- SKIP' storage.log; then
+            echo "::error::storage tests skipped — TEST_POSTGRES_DSN never reached them"
+            grep -a -- '--- SKIP' storage.log
+            exit 1
+          fi
+          ran=$(grep -ac '^--- PASS' storage.log || true)
+          if [ "$ran" -eq 0 ]; then
+            echo "::error::no storage test reported a pass — nothing proved they ran"
+            exit 1
+          fi
+          echo "storage tests that ran: $ran"
+
+  # An image is built only once every check has run and passed, and only from main.
+  publish:
+    needs: [lint, unit, storage]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v5
+
+      # Computed once: the pushed tag and the tag written into the deployment come from this one value.
+      - id: version
+        run: echo "tag=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE }}
+          tags: |
+            type=raw,value=latest
+            type=raw,value=${{ steps.version.outputs.tag }}
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: backend
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          provenance: false
+          sbom: false
+          cache-from: type=gha,scope=trading-board-backend
+          cache-to: type=gha,mode=max,scope=trading-board-backend
+
+  # Old versions are never deleted by anything else; keep five so a rollback target still exists.
+  prune:
+    needs: publish
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+    steps:
+      - uses: actions/delete-package-versions@v5
+        with:
+          package-name: trading-board-backend
+          package-type: container
+          min-versions-to-keep: 5
+
+  # The last link: a commit in the deployment repository, because Argo CD reads git and nothing else.
+  deploy:
+    needs: publish
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: .
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          repository: CodeMachine0121/go-trading-deploy
+          ssh-key: ${{ secrets.DEPLOY_REPO_SSH_KEY }}
+          ref: main
+          fetch-depth: 0
+
+      - name: Point the deployment at this commit
+        env:
+          TAG: ${{ needs.publish.outputs.tag }}
+          # Through the environment, never interpolated into the script: a commit message is text somebody wrote.
+          SOURCE_MESSAGE: ${{ github.event.head_commit.message }}
+        run: |
+          set -euo pipefail
+
+          # yq targets the newTag of the images entry with this name, not whatever line looks right.
+          yq -i "(.images[] | select(.name == strenv(IMAGE)) | .newTag) = strenv(TAG)" \
+            trading-board-backend/kustomization.yaml
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add trading-board-backend/kustomization.yaml
+          if git diff --cached --quiet; then
+            echo "deployment already points at $TAG"
+            exit 0
+          fi
+
+          SUBJECT=$(printf '%s\n' "$SOURCE_MESSAGE" | head -1)
+          git commit -m "Deploy trading-board-backend $TAG" \
+                     -m "${GITHUB_REPOSITORY}@${GITHUB_SHA}" \
+                     -m "$SUBJECT"
+
+          # Several services write to this repository; rebase and retry rather than force.
+          for attempt in 1 2 3; do
+            if git push; then
+              exit 0
+            fi
+            echo "push refused, rebasing onto what landed first (attempt $attempt)"
+            git pull --rebase
+          done
+
+          echo "::error::could not write the deployment update after three attempts"
+          exit 1
