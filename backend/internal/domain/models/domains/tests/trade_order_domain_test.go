@@ -113,7 +113,8 @@ func TestTradeOrderDomainWorksOutAmountAndFee(t *testing.T) {
 
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
-			orderDomain := domains.NewTradeOrderDomain(anOrderOf(testCase.side, 90), calendar)
+			order := anOrderOf(testCase.side, 90)
+			orderDomain := domains.NewTradeOrderDomain(order, calendar)
 
 			fill, fillError := orderDomain.ReportFill(testCase.report,
 				domains.NewFeeScheduleDomain(defaultFeeSchedule), taipeiTime("2026-11-26 13:00"))
@@ -121,7 +122,7 @@ func TestTradeOrderDomainWorksOutAmountAndFee(t *testing.T) {
 			require.NoError(t, fillError)
 			assert.Equal(t, testCase.expectedAmount, fill.Amount.String())
 			assert.Equal(t, testCase.expectedFee, fill.Fee.String())
-			entry := orderDomain.LedgerEntryOfLatestFill()
+			entry := order.ToLedgerEntryVo(fill)
 			assert.Equal(t, testCase.expectedAmount, entry.Amount.String())
 			assert.Equal(t, "2303", entry.Symbol)
 		})

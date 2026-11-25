@@ -6,6 +6,7 @@ import (
 	domaininterface "github.com/CodeMachine0121/trading-board/backend/internal/domain/interface"
 	"github.com/CodeMachine0121/trading-board/backend/internal/domain/models/domains"
 	"github.com/CodeMachine0121/trading-board/backend/internal/domain/models/dto"
+	"github.com/CodeMachine0121/trading-board/backend/internal/domain/models/entities"
 )
 
 // TradeOrderService records what happened to an order: a fill, or the owner skipping it.
@@ -46,12 +47,9 @@ func (orderService *TradeOrderService) ReportFill(
 	var orderDto dto.OrderDto
 	reportError := orderService.transactionRepository.Exclusively(executionContext,
 		func(transactionContext context.Context) error {
-			order, isFound, findError := orderService.tradeOrderRepository.FindByID(transactionContext, orderID)
+			order, findError := orderService.requireOrder(transactionContext, orderID)
 			if findError != nil {
 				return findError
-			}
-			if !isFound {
-				return domains.NotFound("orderNotFound", "找不到這筆委託")
 			}
 
 			orderDomain := domains.NewTradeOrderDomain(order, orderService.calendar)
@@ -64,7 +62,7 @@ func (orderService *TradeOrderService) ReportFill(
 			if loadError != nil {
 				return loadError
 			}
-			if admitError := ledger.Admit(orderDomain.LedgerEntryOfLatestFill()); admitError != nil {
+			if admitError := ledger.Admit(order.ToLedgerEntryVo(fill)); admitError != nil {
 				return admitError
 			}
 
@@ -92,12 +90,9 @@ func (orderService *TradeOrderService) SkipOrder(executionContext context.Contex
 	var orderDto dto.OrderDto
 	skipError := orderService.transactionRepository.Exclusively(executionContext,
 		func(transactionContext context.Context) error {
-			order, isFound, findError := orderService.tradeOrderRepository.FindByID(transactionContext, orderID)
+			order, findError := orderService.requireOrder(transactionContext, orderID)
 			if findError != nil {
 				return findError
-			}
-			if !isFound {
-				return domains.NotFound("orderNotFound", "找不到這筆委託")
 			}
 
 			orderDomain := domains.NewTradeOrderDomain(order, orderService.calendar)
@@ -116,4 +111,19 @@ func (orderService *TradeOrderService) SkipOrder(executionContext context.Contex
 	}
 
 	return orderDto, nil
+}
+
+// requireOrder answers not found for an order that does not exist, so every use case refuses it the same way.
+func (orderService *TradeOrderService) requireOrder(
+	executionContext context.Context, orderID string,
+) (entities.TradeOrder, error) {
+	order, isFound, findError := orderService.tradeOrderRepository.FindByID(executionContext, orderID)
+	if findError != nil {
+		return entities.TradeOrder{}, findError
+	}
+	if !isFound {
+		return entities.TradeOrder{}, domains.NotFound("orderNotFound", "找不到這筆委託")
+	}
+
+	return order, nil
 }

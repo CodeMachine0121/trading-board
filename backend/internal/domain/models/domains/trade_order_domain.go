@@ -93,11 +93,6 @@ func (orderDomain *TradeOrderDomain) Skip() error {
 	return nil
 }
 
-// LedgerEntryOfLatestFill is the entry the ledger must admit for the fill just reported.
-func (orderDomain TradeOrderDomain) LedgerEntryOfLatestFill() vo.LedgerEntryVo {
-	return orderDomain.order.ToLedgerEntryVo(orderDomain.order.Fills[len(orderDomain.order.Fills)-1])
-}
-
 func (orderDomain TradeOrderDomain) ToDto() dto.OrderDto {
 	fillDtos := make([]dto.OrderFillDto, 0, len(orderDomain.order.Fills))
 	for _, fill := range orderDomain.order.Fills {
