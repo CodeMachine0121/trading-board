@@ -1,3 +1,4 @@
+import { createHash, randomBytes } from 'node:crypto'
 import Decimal from 'decimal.js'
 
 /**
@@ -11,10 +12,16 @@ import Decimal from 'decimal.js'
  * 已實現損益、月預算結轉。它不是後端的參考實作。
  */
 
-export const MOCK_USERNAME = 'owner'
+export const MOCK_EMAIL = 'owner@example.com'
 export const MOCK_PASSWORD = 'owner'
+export const MOCK_CLIENT_ID = 'trading-board-web'
 const MOCK_TOKEN_PREFIX = 'mock-token-'
-const SESSION_HOURS = 12
+const ACCESS_TOKEN_SECONDS = 15 * 60
+const AUTHORIZATION_CODE_MILLISECONDS = 60_000
+const REFRESH_TOKEN_MILLISECONDS = 30 * 86_400_000
+const SIGN_IN_FAILURES_BEFORE_LOCK = 5
+const SIGN_IN_LOCK_MILLISECONDS = 15 * 60_000
+const API_KEY_LEAD_IN = 'tbk_'
 
 const MONTHLY_ALLOCATION = new Decimal(10000)
 const BROKER_FEE_RATE = new Decimal('0.001425')
@@ -31,11 +38,63 @@ const TAIPEI_DATE_FORMAT = new Intl.DateTimeFormat('en-CA', {
   day: '2-digit',
 })
 
-/** 拒絕：狀態碼與契約的錯誤內容。 */
+/** 拒絕：狀態碼與契約的錯誤內容。`oauth` 的拒絕照 OAuth 的形狀回（`{error, error_description}`）。 */
 export class MockRejection extends Error {
-  constructor(readonly status: number, readonly code: string, message: string) {
+  constructor(readonly status: number, readonly code: string, message: string, readonly oauth = false) {
     super(message)
   }
+}
+
+class MockAuthorizationCode {
+  constructor(
+    readonly codeChallenge: string,
+    readonly redirectUri: string,
+    readonly expiresAt: Date,
+  ) {}
+}
+
+class MockRefreshToken {
+  rotated = false
+  revoked = false
+
+  constructor(
+    readonly familyId: string,
+    readonly expiresAt: Date,
+  ) {}
+}
+
+class MockApiKey {
+  lastUsedAt: Date | null = null
+  revokedAt: Date | null = null
+
+  constructor(
+    readonly id: string,
+    readonly memberName: string,
+    readonly note: string,
+    readonly key: string,
+    readonly createdAt: Date,
+  ) {}
+
+  wire() {
+    return {
+      id: this.id,
+      memberName: this.memberName,
+      note: this.note,
+      displayPrefix: this.key.slice(0, 12),
+      status: this.revokedAt === null ? 'active' : 'revoked',
+      createdAt: this.createdAt.toISOString(),
+      lastUsedAt: this.lastUsedAt?.toISOString() ?? null,
+      revokedAt: this.revokedAt?.toISOString() ?? null,
+    }
+  }
+}
+
+/** 換到的東西：給畫面的 JSON，與要放進 HttpOnly cookie 的續期憑證。 */
+export class MockTokenGrant {
+  constructor(
+    readonly body: { access_token: string, token_type: string, expires_in: number },
+    readonly refreshToken: string,
+  ) {}
 }
 
 class MockFill {
@@ -80,6 +139,7 @@ class MockCard {
     readonly note: string,
     readonly orders: MockOrder[],
     readonly publishedAt: Date,
+    readonly publishedBy = '',
   ) {}
 }
 
@@ -106,6 +166,11 @@ class MockClosedPosition {
 
 export class MockBoard {
   private readonly cards = new Map<string, MockCard>()
+  private readonly authorizationCodes = new Map<string, MockAuthorizationCode>()
+  private readonly refreshTokens = new Map<string, MockRefreshToken>()
+  private readonly accessTokens = new Map<string, Date>()
+  private readonly apiKeys: MockApiKey[] = []
+  private signInFailures: Date[] = []
   private sequence = 0
 
   constructor(private readonly now: () => Date = () => new Date()) {
@@ -114,24 +179,139 @@ export class MockBoard {
 
   // ── 身分 ─────────────────────────────────────────────
 
-  signIn(username: string, password: string) {
-    if (username !== MOCK_USERNAME || password !== MOCK_PASSWORD) {
-      throw new MockRejection(401, 'invalidCredentials', '帳號或密碼錯誤')
+  /** 登入頁送來帳密與授權參數；對了就回要轉去的網址（帶一次性授權碼與 state）。 */
+  authorize(body: Record<string, unknown>) {
+    const text = (name: string) => typeof body[name] === 'string' ? body[name] : ''
+    const redirectUri = text('redirect_uri')
+    if (text('client_id') !== MOCK_CLIENT_ID) {
+      throw new MockRejection(400, 'invalid_client', '不明的應用程式', true)
+    }
+    if (!redirectUri.endsWith('/auth/callback')) {
+      throw new MockRejection(400, 'invalid_request', '不允許的返回網址', true)
+    }
+    if (text('code_challenge_method') !== 'S256' || !/^[\w-]{43}$/.test(text('code_challenge'))) {
+      throw new MockRejection(400, 'invalid_request', '必須使用 S256 驗證', true)
     }
 
-    return {
-      accessToken: `${MOCK_TOKEN_PREFIX}${this.nextId()}`,
-      expiresAt: new Date(this.now().getTime() + SESSION_HOURS * 3_600_000).toISOString(),
+    const now = this.now()
+    this.signInFailures = this.signInFailures.filter(failedAt => now.getTime() - failedAt.getTime() < SIGN_IN_LOCK_MILLISECONDS)
+    if (this.signInFailures.length >= SIGN_IN_FAILURES_BEFORE_LOCK) {
+      throw new MockRejection(429, 'temporarily_unavailable', '嘗試次數過多，請 15 分鐘後再試', true)
+    }
+    if (text('email').trim().toLowerCase() !== MOCK_EMAIL || text('password') !== MOCK_PASSWORD) {
+      this.signInFailures.push(now)
+      throw new MockRejection(401, 'access_denied', '電子郵件或密碼錯誤', true)
+    }
+
+    this.signInFailures = []
+    const code = this.secret()
+    this.authorizationCodes.set(code, new MockAuthorizationCode(
+      text('code_challenge'), redirectUri, new Date(now.getTime() + AUTHORIZATION_CODE_MILLISECONDS)))
+    const target = new URL(redirectUri)
+    target.searchParams.set('code', code)
+    if (text('state') !== '') {
+      target.searchParams.set('state', text('state'))
+    }
+
+    return { redirectTo: target.toString() }
+  }
+
+  /** 換授權碼或續期；續期憑證由路由放進 HttpOnly cookie。 */
+  token(form: Record<string, unknown>, refreshCookie: string | undefined): MockTokenGrant {
+    const text = (name: string) => typeof form[name] === 'string' ? form[name] : ''
+    if (text('grant_type') === 'authorization_code') {
+      const code = this.authorizationCodes.get(text('code'))
+      this.authorizationCodes.delete(text('code'))
+      const verifierChallenge = createHash('sha256').update(text('code_verifier')).digest('base64url')
+      if (code === undefined || code.expiresAt <= this.now() || code.redirectUri !== text('redirect_uri')
+        || code.codeChallenge !== verifierChallenge) {
+        throw new MockRejection(400, 'invalid_grant', '授權碼無效或已過期', true)
+      }
+
+      return this.grant(this.secret())
+    }
+    if (text('grant_type') === 'refresh_token') {
+      const presented = this.refreshTokens.get(refreshCookie ?? '')
+      if (presented !== undefined && presented.rotated) {
+        this.revokeFamily(presented.familyId)
+      }
+      if (presented === undefined || presented.rotated || presented.revoked || presented.expiresAt <= this.now()) {
+        throw new MockRejection(400, 'invalid_grant', '登入已失效，請重新登入', true)
+      }
+      presented.rotated = true
+
+      return this.grant(presented.familyId)
+    }
+
+    throw new MockRejection(400, 'unsupported_grant_type', '只支援 authorization_code 與 refresh_token', true)
+  }
+
+  /** 登出：撤銷那段登入的所有續期憑證。不認得也算完成。 */
+  revoke(refreshCookie: string | undefined): void {
+    const presented = this.refreshTokens.get(refreshCookie ?? '')
+    if (presented !== undefined) {
+      this.revokeFamily(presented.familyId)
     }
   }
 
-  assertAuthorized(authorization: string | undefined, apiKey: string | undefined): void {
+  me() {
+    return { email: MOCK_EMAIL }
+  }
+
+  /** 回呼叫者是誰：登入的主人（'owner'）或某位成員的金鑰（成員名稱）。 */
+  assertAuthorized(authorization: string | undefined, apiKey: string | undefined): string {
     if (apiKey !== undefined && apiKey !== '') {
-      return
+      const found = this.apiKeys.find(candidate => candidate.key === apiKey && candidate.revokedAt === null)
+      if (found !== undefined) {
+        found.lastUsedAt = this.now()
+
+        return found.memberName
+      }
     }
-    if (authorization === undefined || !authorization.startsWith(`Bearer ${MOCK_TOKEN_PREFIX}`)) {
-      throw new MockRejection(401, 'unauthorized', '請先登入')
+    const accessToken = authorization?.startsWith('Bearer ') ? authorization.slice('Bearer '.length) : ''
+    const expiresAt = this.accessTokens.get(accessToken)
+    if (expiresAt === undefined || expiresAt <= this.now()) {
+      throw new MockRejection(401, 'unauthenticated', '請先登入，或帶上有效的 API 金鑰')
     }
+
+    return 'owner'
+  }
+
+  assertOwner(caller: string): void {
+    if (caller !== 'owner') {
+      throw new MockRejection(403, 'forbidden', '只有登入的擁有者可以使用')
+    }
+  }
+
+  // ── API 金鑰 ─────────────────────────────────────────
+
+  listApiKeys() {
+    return [...this.apiKeys].reverse().map(apiKey => apiKey.wire())
+  }
+
+  createApiKey(body: { memberName?: unknown, note?: unknown }) {
+    const memberName = typeof body.memberName === 'string' ? body.memberName.trim() : ''
+    const note = typeof body.note === 'string' ? body.note.trim() : ''
+    if ([...memberName].length < 1 || [...memberName].length > 40) {
+      throw new MockRejection(400, 'invalidApiKey', '成員名稱須為 1 到 40 個字')
+    }
+    if (this.apiKeys.some(apiKey => apiKey.revokedAt === null && apiKey.memberName.toLowerCase() === memberName.toLowerCase())) {
+      throw new MockRejection(409, 'memberNameInUse', '這個成員名稱已有啟用中的金鑰')
+    }
+    const apiKey = new MockApiKey(this.nextId(), memberName, note, `${API_KEY_LEAD_IN}${this.secret()}`, this.now())
+    this.apiKeys.push(apiKey)
+
+    return { ...apiKey.wire(), key: apiKey.key }
+  }
+
+  revokeApiKey(apiKeyId: string) {
+    const apiKey = this.apiKeys.find(candidate => candidate.id === apiKeyId)
+    if (apiKey === undefined) {
+      throw new MockRejection(404, 'apiKeyNotFound', '找不到這把金鑰')
+    }
+    apiKey.revokedAt ??= this.now()
+
+    return apiKey.wire()
   }
 
   // ── 交易卡 ───────────────────────────────────────────
@@ -168,6 +348,7 @@ export class MockBoard {
         exitReason: order.exitReason,
       })),
       publishedAt: card.publishedAt.toISOString(),
+      publishedBy: card.publishedBy,
     }
   }
 
@@ -181,6 +362,7 @@ export class MockBoard {
         buyCount: card.orders.filter(order => order.side === 'buy').length,
         sellCount: card.orders.filter(order => order.side === 'sell').length,
         filledOrderCount: card.orders.filter(order => order.filledShares() === order.shares).length,
+        publishedBy: card.publishedBy,
       }))
   }
 
@@ -453,6 +635,29 @@ export class MockBoard {
     return this.taipeiDate(new Date(this.now().getTime() + days * MILLISECONDS_PER_DAY))
   }
 
+  private grant(familyId: string): MockTokenGrant {
+    const accessToken = `${MOCK_TOKEN_PREFIX}${this.secret()}`
+    this.accessTokens.set(accessToken, new Date(this.now().getTime() + ACCESS_TOKEN_SECONDS * 1000))
+    const refreshToken = this.secret()
+    this.refreshTokens.set(refreshToken, new MockRefreshToken(
+      familyId, new Date(this.now().getTime() + REFRESH_TOKEN_MILLISECONDS)))
+
+    return new MockTokenGrant(
+      { access_token: accessToken, token_type: 'Bearer', expires_in: ACCESS_TOKEN_SECONDS }, refreshToken)
+  }
+
+  private revokeFamily(familyId: string): void {
+    for (const refreshToken of this.refreshTokens.values()) {
+      if (refreshToken.familyId === familyId) {
+        refreshToken.revoked = true
+      }
+    }
+  }
+
+  private secret(): string {
+    return randomBytes(32).toString('base64url')
+  }
+
   private nextId(): string {
     this.sequence += 1
 
@@ -492,6 +697,6 @@ export class MockBoard {
       '月底資金配置，等回測 5 日線。', new Decimal('49'), new Decimal('44'), new Decimal('55'), true)
     const esmtSell = new MockOrder(this.nextId(), 'sell', '3006', '晶豪科', new Decimal('68'), 50,
       '到達停利價。', undefined, undefined, undefined, false, 'takeProfit')
-    this.cards.set(this.dayOffset(1), new MockCard(this.dayOffset(1), 'trade', '', [umcBuy, nanyaBuy, esmtSell], at(0, '20:30')))
+    this.cards.set(this.dayOffset(1), new MockCard(this.dayOffset(1), 'trade', '', [umcBuy, nanyaBuy, esmtSell], at(0, '20:30'), 'desk-chief'))
   }
 }
