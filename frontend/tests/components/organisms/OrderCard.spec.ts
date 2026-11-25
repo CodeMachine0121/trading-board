@@ -41,6 +41,16 @@ describe('OrderCard：一筆委託', () => {
     expect((wrapper.find('[data-testid="fill-fee"]').element as HTMLInputElement).value).toBe('')
   })
 
+  it('一股都還沒成交的 90 股委託 → 表單的價格 52.5、股數 90、手續費空白', async () => {
+    const wrapper = mountCard(anOrderDto('buy-1', true, 90))
+
+    await wrapper.find('[data-testid="order-report"]').trigger('click')
+
+    expect((wrapper.find('[data-testid="fill-price"]').element as HTMLInputElement).value).toBe('52.5')
+    expect((wrapper.find('[data-testid="fill-shares"]').element as HTMLInputElement).value).toBe('90')
+    expect((wrapper.find('[data-testid="fill-fee"]').element as HTMLInputElement).value).toBe('')
+  })
+
   it('送出表單 → 把打的字交出去', async () => {
     const wrapper = mountCard(anOrderDto('buy-1', true, 30))
     await wrapper.find('[data-testid="order-report"]').trigger('click')

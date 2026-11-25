@@ -112,6 +112,15 @@ describe('TradeCardApplication：今日的交易卡', () => {
     expect(await application.fetchLatestCard()).toBeNull()
   })
 
+  it('一股都還沒成交的 90 股委託 → 表單預設限價 52.5、股數 90', async () => {
+    const { tradeCardProxy, application } = setUp()
+    tradeCardProxy.fetchLatestCard.mockResolvedValue(aTradeCard('2026-11-26', [aBuyOrder('pending', 0)]))
+
+    const order = (await application.fetchLatestCard())?.buyOrders[0]
+
+    expect([order?.defaultFillPrice, order?.defaultFillShares]).toEqual(['52.5', '90'])
+  })
+
   it('回報成交表單的初始值：限價、剩餘股數、現在（台北）', async () => {
     const { tradeCardProxy, application } = setUp()
     tradeCardProxy.fetchLatestCard.mockResolvedValue(aTradeCard('2026-11-26', [aBuyOrder('partiallyFilled', 60)]))
