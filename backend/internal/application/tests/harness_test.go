@@ -67,7 +67,7 @@ func newHarness(t *testing.T, now string) *harness {
 
 	testHarness.authenticationApplication = application.NewAuthenticationApplication(service.NewAuthenticationService(
 		domains.NewAccessCredentialDomain(vo.AccessCredentialVo{OwnerUsername: "james", OwnerPassword: "secret", AgentApiKey: "agentkey"}),
-		24*time.Hour, testHarness.accessTokenProxy, testHarness.clockProxy))
+		24*time.Hour, testHarness.accessTokenProxy, testHarness.clockProxy, calendar))
 	testHarness.tradeCardApplication = application.NewTradeCardApplication(service.NewTradeCardService(
 		testHarness.cardRepository, testHarness.transactionRepository, ledgerLoader, testHarness.clockProxy, calendar))
 	testHarness.tradeOrderApplication = application.NewTradeOrderApplication(service.NewTradeOrderService(

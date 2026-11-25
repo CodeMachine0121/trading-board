@@ -67,7 +67,7 @@ func newApi(t *testing.T) *api {
 		vo.BudgetPolicyVo{MonthlyAllocation: decimal.NewFromInt(10000), MonthEndStartDay: 22})
 	authenticationApplication := application.NewAuthenticationApplication(service.NewAuthenticationService(
 		domains.NewAccessCredentialDomain(vo.AccessCredentialVo{OwnerUsername: "james", OwnerPassword: "secret", AgentApiKey: agentKey}),
-		24*time.Hour, testApi.accessTokenProxy, clockProxy))
+		24*time.Hour, testApi.accessTokenProxy, clockProxy, calendar))
 	errorPresenter := controller.NewErrorPresenter()
 
 	router.NewRouter(

@@ -31,7 +31,7 @@ func TestHealthAnswersWithoutCredentials(t *testing.T) {
 
 func TestSignInHandsOutAPass(t *testing.T) {
 	testApi := newApi(t)
-	expiresAt := time.Date(2026, 11, 26, 20, 0, 0, 0, taipei)
+	expiresAt := time.Date(2026, 11, 26, 12, 0, 0, 0, time.UTC)
 	testApi.accessTokenProxy.EXPECT().Issue(gomock.Any()).Return(vo.AccessTokenVo{AccessToken: "signed", ExpiresAt: expiresAt}, nil)
 
 	result := testApi.call(t, http.MethodPost, "/api/v1/auth/login", `{"username":"james","password":"secret"}`, nil)

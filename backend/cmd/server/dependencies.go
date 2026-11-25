@@ -28,7 +28,7 @@ func newRouter(database *gorm.DB, applicationConfig config.ApplicationConfig) *r
 		tradeOrderRepository, tradeCardRepository, clockProxy, calendar, applicationConfig.BudgetPolicy)
 	authenticationApplication := application.NewAuthenticationApplication(service.NewAuthenticationService(
 		domains.NewAccessCredentialDomain(applicationConfig.AccessCredential),
-		applicationConfig.AccessTokenLifetime, accessTokenProxy, clockProxy))
+		applicationConfig.AccessTokenLifetime, accessTokenProxy, clockProxy, calendar))
 	tradeCardApplication := application.NewTradeCardApplication(service.NewTradeCardService(
 		tradeCardRepository, transactionRepository, ledgerLoader, clockProxy, calendar))
 	tradeOrderApplication := application.NewTradeOrderApplication(service.NewTradeOrderService(

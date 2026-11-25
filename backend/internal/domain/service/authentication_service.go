@@ -16,6 +16,7 @@ type AuthenticationService struct {
 	accessTokenTTL   time.Duration
 	accessTokenProxy domaininterface.IAccessTokenProxy
 	clockProxy       domaininterface.IClockProxy
+	calendar         domains.BusinessCalendarDomain
 }
 
 func NewAuthenticationService(
@@ -23,12 +24,14 @@ func NewAuthenticationService(
 	accessTokenTTL time.Duration,
 	accessTokenProxy domaininterface.IAccessTokenProxy,
 	clockProxy domaininterface.IClockProxy,
+	calendar domains.BusinessCalendarDomain,
 ) *AuthenticationService {
 	return &AuthenticationService{
 		accessCredential: accessCredential,
 		accessTokenTTL:   accessTokenTTL,
 		accessTokenProxy: accessTokenProxy,
 		clockProxy:       clockProxy,
+		calendar:         calendar,
 	}
 }
 
@@ -48,7 +51,11 @@ func (authenticationService *AuthenticationService) SignIn(
 		return dto.AccessTokenDto{}, issueError
 	}
 
-	return dto.AccessTokenDto{AccessToken: accessToken.AccessToken, ExpiresAt: accessToken.ExpiresAt}, nil
+	// Shown in the business time zone, like every other timestamp the board answers with.
+	return dto.AccessTokenDto{
+		AccessToken: accessToken.AccessToken,
+		ExpiresAt:   accessToken.ExpiresAt.In(authenticationService.calendar.Location()),
+	}, nil
 }
 
 // IdentifyCaller admits the agent key first and the owner's pass second; anything else is not authenticated.
