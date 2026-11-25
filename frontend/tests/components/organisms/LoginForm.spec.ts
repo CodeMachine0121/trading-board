@@ -4,21 +4,27 @@ import LoginForm from '~/components/organisms/LoginForm.vue'
 import type { CredentialsDto } from '~/domain/models/dto/credentials-dto'
 
 describe('LoginForm', () => {
-  it('送出 → 交出帳號與密碼', async () => {
+  it('送出 → 交出電子郵件與密碼', async () => {
     const wrapper = mount(LoginForm, { props: { submitting: false, errorMessage: null } })
-    await wrapper.find('[data-testid="login-username"]').setValue('owner')
+    await wrapper.find('[data-testid="login-email"]').setValue('owner@example.com')
     await wrapper.find('[data-testid="login-password"]').setValue('secret')
 
     await wrapper.find('form').trigger('submit')
 
     const [credentials] = wrapper.emitted('submit')?.[0] as [CredentialsDto]
-    expect([credentials.username, credentials.password]).toEqual(['owner', 'secret'])
+    expect([credentials.email, credentials.password]).toEqual(['owner@example.com', 'secret'])
   })
 
-  it('帳密錯誤 → 顯示「帳號或密碼錯誤」', () => {
-    const wrapper = mount(LoginForm, { props: { submitting: false, errorMessage: '帳號或密碼錯誤' } })
+  it.each(['電子郵件或密碼錯誤', '嘗試次數過多，請 15 分鐘後再試'])('板子拒絕 → 顯示「%s」', (message) => {
+    const wrapper = mount(LoginForm, { props: { submitting: false, errorMessage: message } })
 
-    expect(wrapper.find('[data-testid="login-error"]').text()).toBe('帳號或密碼錯誤')
+    expect(wrapper.find('[data-testid="login-error"]').text()).toBe(message)
+  })
+
+  it('電子郵件欄位是 email 型別（手機跳出對的鍵盤）', () => {
+    const wrapper = mount(LoginForm, { props: { submitting: false, errorMessage: null } })
+
+    expect(wrapper.find('[data-testid="login-email"]').attributes('type')).toBe('email')
   })
 
   it('沒有錯誤 → 不顯示錯誤', () => {

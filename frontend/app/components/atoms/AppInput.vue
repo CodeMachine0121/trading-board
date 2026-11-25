@@ -7,7 +7,7 @@ defineOptions({ inheritAttrs: false })
 
 withDefaults(defineProps<{
   label: string
-  type?: 'text' | 'password' | 'datetime-local'
+  type?: 'text' | 'email' | 'password' | 'datetime-local'
   hint?: string
 }>(), {
   type: 'text',

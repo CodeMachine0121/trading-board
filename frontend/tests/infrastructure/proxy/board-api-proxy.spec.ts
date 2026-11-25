@@ -2,19 +2,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { BoardRejectedError } from '~/domain/errors/board-rejected-error'
 import { BoardUnreachableError } from '~/domain/errors/board-unreachable-error'
 import { SignedOutError } from '~/domain/errors/signed-out-error'
-import type { ISessionStorageProxy } from '~/domain/interface/i-session-storage-proxy'
-import { Session } from '~/domain/models/entities/session'
+import { SignInLockedError } from '~/domain/errors/sign-in-locked-error'
 import { TradeCardProxy } from '~/infrastructure/proxy/trade-card-proxy'
 
 const BASE_URL = 'https://board.example/api/v1'
-
-function sessionStorageWith(session: Session | null): ISessionStorageProxy {
-  return {
-    readSession: vi.fn<ISessionStorageProxy['readSession']>().mockReturnValue(session),
-    writeSession: vi.fn<ISessionStorageProxy['writeSession']>(),
-    clearSession: vi.fn<ISessionStorageProxy['clearSession']>(),
-  }
-}
 
 /** 照 ofetch 的 FetchError 長相做一個失敗：狀態碼與契約的錯誤內容。 */
 function boardFailure(status: number, message?: string) {
@@ -38,7 +29,7 @@ afterEach(() => {
 describe('BoardApiProxy：每一發請求都帶著登入，打設定的那個板子', () => {
   it('打的是設定的 base URL，並帶 Bearer 憑證', async () => {
     const fetchMock = stubFetch().mockResolvedValue([])
-    const proxy = new TradeCardProxy(BASE_URL, sessionStorageWith(new Session('abc', new Date())))
+    const proxy = new TradeCardProxy(BASE_URL, async () => 'abc')
 
     await proxy.listCards('2026-11')
 
@@ -53,7 +44,7 @@ describe('BoardApiProxy：每一發請求都帶著登入，打設定的那個板
   it('這台瀏覽器沒有登入 → 不帶憑證', async () => {
     const fetchMock = stubFetch().mockResolvedValue([])
 
-    await new TradeCardProxy(BASE_URL, sessionStorageWith(null)).listCards('2026-11')
+    await new TradeCardProxy(BASE_URL, async () => null).listCards('2026-11')
 
     expect(fetchMock.mock.calls[0]?.[1]?.headers).toEqual({})
   })
@@ -63,7 +54,7 @@ describe('BoardApiProxy：失敗翻成領域認得的錯誤', () => {
   it('401 → 登入已失效，並通知組裝根（清登入、回登入畫面）一次', async () => {
     stubFetch().mockRejectedValue(boardFailure(401, 'token expired'))
     const onSignedOut = vi.fn()
-    const proxy = new TradeCardProxy(BASE_URL, sessionStorageWith(null), onSignedOut)
+    const proxy = new TradeCardProxy(BASE_URL, async () => null, onSignedOut)
 
     await expect(proxy.listCards('2026-11')).rejects.toBeInstanceOf(SignedOutError)
     expect(onSignedOut).toHaveBeenCalledTimes(1)
@@ -72,7 +63,7 @@ describe('BoardApiProxy：失敗翻成領域認得的錯誤', () => {
   it('401 而組裝根沒交代要做什麼 → 一樣是登入已失效', async () => {
     stubFetch().mockRejectedValue(boardFailure(401))
 
-    await expect(new TradeCardProxy(BASE_URL, sessionStorageWith(null)).listCards('2026-11')).rejects.toBeInstanceOf(SignedOutError)
+    await expect(new TradeCardProxy(BASE_URL, async () => null).listCards('2026-11')).rejects.toBeInstanceOf(SignedOutError)
   })
 
   it.each([
@@ -82,7 +73,7 @@ describe('BoardApiProxy：失敗翻成領域認得的錯誤', () => {
   ])('%s', async (_, status, message, expected) => {
     stubFetch().mockRejectedValue(boardFailure(status, message))
 
-    await expect(new TradeCardProxy(BASE_URL, sessionStorageWith(null)).listCards('2026-11'))
+    await expect(new TradeCardProxy(BASE_URL, async () => null).listCards('2026-11'))
       .rejects.toThrow(new BoardRejectedError(expected))
   })
 
@@ -93,20 +84,47 @@ describe('BoardApiProxy：失敗翻成領域認得的錯誤', () => {
   ])('%s', async (_, failure) => {
     stubFetch().mockRejectedValue(failure)
 
-    await expect(new TradeCardProxy(BASE_URL, sessionStorageWith(null)).listCards('2026-11'))
+    await expect(new TradeCardProxy(BASE_URL, async () => null).listCards('2026-11'))
       .rejects.toBeInstanceOf(BoardUnreachableError)
   })
 
   it('找不到（404）在允許「沒有」的地方 → null', async () => {
     stubFetch().mockRejectedValue(boardFailure(404, 'no card'))
 
-    expect(await new TradeCardProxy(BASE_URL, sessionStorageWith(null)).fetchLatestCard()).toBeNull()
+    expect(await new TradeCardProxy(BASE_URL, async () => null).fetchLatestCard()).toBeNull()
   })
 
   it('允許「沒有」的地方遇到其他失敗 → 照樣翻譯', async () => {
     stubFetch().mockRejectedValue(boardFailure(503))
 
-    await expect(new TradeCardProxy(BASE_URL, sessionStorageWith(null)).fetchLatestCard())
+    await expect(new TradeCardProxy(BASE_URL, async () => null).fetchLatestCard())
       .rejects.toBeInstanceOf(BoardUnreachableError)
+  })
+})
+
+describe('BoardApiProxy：登入相關端點的失敗照 OAuth 的形狀讀', () => {
+  it('OAuth 形狀的拒絕 → 照 error_description 說', async () => {
+    stubFetch().mockRejectedValue(Object.assign(new Error('fetch failed'), {
+      response: { status: 400 }, data: { error: 'invalid_grant', error_description: '授權碼無效或已過期' },
+    }))
+
+    await expect(new TradeCardProxy(BASE_URL, async () => null).listCards('2026-11'))
+      .rejects.toThrow(new BoardRejectedError('授權碼無效或已過期'))
+  })
+
+  it('OAuth 形狀卻沒附說明 → 通用說法', async () => {
+    stubFetch().mockRejectedValue(Object.assign(new Error('fetch failed'), {
+      response: { status: 400 }, data: { error: 'invalid_request' },
+    }))
+
+    await expect(new TradeCardProxy(BASE_URL, async () => null).listCards('2026-11'))
+      .rejects.toThrow(new BoardRejectedError('板子拒絕了這次操作'))
+  })
+
+  it('429 → 嘗試次數過多', async () => {
+    stubFetch().mockRejectedValue(boardFailure(429))
+
+    await expect(new TradeCardProxy(BASE_URL, async () => null).listCards('2026-11'))
+      .rejects.toBeInstanceOf(SignInLockedError)
   })
 })

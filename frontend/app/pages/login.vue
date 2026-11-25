@@ -10,18 +10,17 @@ const { $userSessionApplication } = useNuxtApp()
 const submitting = ref(false)
 const errorMessage = ref<string | null>(null)
 
+// 帳密對了，板子回一個要轉去的網址（帶一次性授權碼）；整頁跳過去，由 /auth/callback 收尾。
 async function signIn(credentialsDto: CredentialsDto): Promise<void> {
   submitting.value = true
   errorMessage.value = null
 
   try {
-    await $userSessionApplication.signIn(credentialsDto)
-    await navigateTo('/')
+    const redirectTo = await $userSessionApplication.beginSignIn(credentialsDto)
+    await navigateTo(redirectTo, { external: true })
   }
   catch (error: unknown) {
     errorMessage.value = failureMessageOf(error)
-  }
-  finally {
     submitting.value = false
   }
 }
