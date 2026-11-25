@@ -1,14 +1,9 @@
 import Decimal from 'decimal.js'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { TradeCardProxy } from '~/infrastructure/proxy/trade-card-proxy'
-import type { ISessionStorageProxy } from '~/domain/interface/i-session-storage-proxy'
 
 const BASE_URL = '/mock/api/v1'
-const NO_SESSION: ISessionStorageProxy = {
-  readSession: () => null,
-  writeSession: vi.fn<ISessionStorageProxy['writeSession']>(),
-  clearSession: vi.fn<ISessionStorageProxy['clearSession']>(),
-}
+const NO_SESSION = async (): Promise<string | null> => null
 
 function stubFetch() {
   const fetchMock = vi.fn()

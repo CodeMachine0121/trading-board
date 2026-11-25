@@ -28,6 +28,13 @@ const emit = defineEmits<{
       <p class="trade-card-view__published">
         {{ card.publishedAtText }}
       </p>
+      <p
+        v-if="card.publisherText !== ''"
+        class="trade-card-view__published"
+        data-testid="card-publisher"
+      >
+        {{ card.publisherText }}
+      </p>
     </header>
 
     <div

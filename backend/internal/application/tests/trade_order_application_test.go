@@ -131,7 +131,7 @@ func TestTradeOrderApplicationAnswersNotFoundForAnUnknownOrder(t *testing.T) {
 	testHarness.orderRepository.EXPECT().FindByID(gomock.Any(), "missing").Return(entities.TradeOrder{}, false, nil).Times(2)
 
 	_, reportError := testHarness.tradeOrderApplication.ReportFill(t.Context(), "missing", aFillReport(10, "52.5"))
-	_, skipError := testHarness.tradeOrderApplication.SkipOrder(t.Context(), "missing")
+	_, skipError := testHarness.tradeOrderApplication.SkipOrder(t.Context(), "missing", dto.OrderSkipDto{SkippedBy: "owner"})
 
 	assert.ErrorIs(t, reportError, domains.ErrNotFound)
 	assert.ErrorIs(t, skipError, domains.ErrNotFound)
@@ -189,13 +189,14 @@ func TestTradeOrderApplicationSkipsOrders(t *testing.T) {
 		t.Run(testCase.name, func(t *testing.T) {
 			testHarness := newHarness(t, "2026-11-26 13:00")
 			testHarness.orderRepository.EXPECT().FindByID(gomock.Any(), "order-1").Return(testCase.order, true, nil)
-			testHarness.orderRepository.EXPECT().MarkSkipped(gomock.Any(), "order-1").Return(nil)
+			testHarness.orderRepository.EXPECT().MarkSkipped(gomock.Any(), "order-1", "owner").Return(nil)
 
-			orderDto, skipError := testHarness.tradeOrderApplication.SkipOrder(t.Context(), "order-1")
+			orderDto, skipError := testHarness.tradeOrderApplication.SkipOrder(t.Context(), "order-1", dto.OrderSkipDto{SkippedBy: "owner"})
 
 			require.NoError(t, skipError)
 			assert.Equal(t, testCase.expectedStatus, orderDto.Status)
 			assert.Equal(t, testCase.expectedFilled, orderDto.FilledShares)
+			assert.Equal(t, "owner", orderDto.SkippedBy)
 
 			// The skip changes no fill, so whatever filled is still held.
 			skippedOrder := testCase.order
@@ -216,7 +217,7 @@ func TestTradeOrderApplicationRefusesToSkipAFilledOrder(t *testing.T) {
 	testHarness := newHarness(t, "2026-11-26 13:00")
 	testHarness.orderRepository.EXPECT().FindByID(gomock.Any(), "order-1").Return(aWaitingBuyOrder(90, 90), true, nil)
 
-	_, skipError := testHarness.tradeOrderApplication.SkipOrder(t.Context(), "order-1")
+	_, skipError := testHarness.tradeOrderApplication.SkipOrder(t.Context(), "order-1", dto.OrderSkipDto{SkippedBy: "owner"})
 
 	assert.ErrorIs(t, skipError, domains.ErrConflict)
 }
@@ -226,7 +227,7 @@ func TestTradeOrderApplicationPassesOnStorageFailuresWhileSkipping(t *testing.T)
 		testHarness := newHarness(t, "2026-11-26 13:00")
 		testHarness.orderRepository.EXPECT().FindByID(gomock.Any(), gomock.Any()).Return(entities.TradeOrder{}, false, errStorage)
 
-		_, skipError := testHarness.tradeOrderApplication.SkipOrder(t.Context(), "order-1")
+		_, skipError := testHarness.tradeOrderApplication.SkipOrder(t.Context(), "order-1", dto.OrderSkipDto{SkippedBy: "owner"})
 
 		assert.ErrorIs(t, skipError, errStorage)
 	})
@@ -234,10 +235,39 @@ func TestTradeOrderApplicationPassesOnStorageFailuresWhileSkipping(t *testing.T)
 	t.Run("recording the skip", func(t *testing.T) {
 		testHarness := newHarness(t, "2026-11-26 13:00")
 		testHarness.orderRepository.EXPECT().FindByID(gomock.Any(), gomock.Any()).Return(aWaitingBuyOrder(90), true, nil)
-		testHarness.orderRepository.EXPECT().MarkSkipped(gomock.Any(), gomock.Any()).Return(errStorage)
+		testHarness.orderRepository.EXPECT().MarkSkipped(gomock.Any(), gomock.Any(), gomock.Any()).Return(errStorage)
 
-		_, skipError := testHarness.tradeOrderApplication.SkipOrder(t.Context(), "order-1")
+		_, skipError := testHarness.tradeOrderApplication.SkipOrder(t.Context(), "order-1", dto.OrderSkipDto{SkippedBy: "owner"})
 
 		assert.ErrorIs(t, skipError, errStorage)
 	})
+}
+
+func TestTradeOrderApplicationRecordsWhoReportedTheFill(t *testing.T) {
+	testHarness := newHarness(t, "2026-11-26 13:00").withFillLog("2026-11-26")
+	testHarness.orderRepository.EXPECT().FindByID(gomock.Any(), "order-1").Return(aWaitingBuyOrder(90), true, nil)
+	stored := testHarness.storesFill(aWaitingBuyOrder(90))
+	report := aFillReport(90, "52.5")
+	report.ReportedBy = "risk-budget-officer"
+
+	orderDto, reportError := testHarness.tradeOrderApplication.ReportFill(t.Context(), "order-1", report)
+
+	require.NoError(t, reportError)
+	assert.Equal(t, "risk-budget-officer", stored.ReportedBy)
+	assert.Equal(t, "risk-budget-officer", orderDto.Fills[0].ReportedBy)
+}
+
+func TestTradeOrderApplicationKeepsWhoFirstSkippedAnOrder(t *testing.T) {
+	alreadySkipped := aWaitingBuyOrder(90)
+	alreadySkipped.IsSkipped = true
+	alreadySkipped.SkippedBy = "desk-chief"
+	testHarness := newHarness(t, "2026-11-26 13:00")
+	testHarness.orderRepository.EXPECT().FindByID(gomock.Any(), "order-1").Return(alreadySkipped, true, nil)
+	testHarness.orderRepository.EXPECT().MarkSkipped(gomock.Any(), "order-1", "owner").Return(nil)
+
+	orderDto, skipError := testHarness.tradeOrderApplication.SkipOrder(t.Context(), "order-1", dto.OrderSkipDto{SkippedBy: "owner"})
+
+	require.NoError(t, skipError)
+	assert.Equal(t, "skipped", orderDto.Status)
+	assert.Equal(t, "desk-chief", orderDto.SkippedBy)
 }

@@ -24,7 +24,7 @@ func aPublishedSell(shares int) dto.SellOrderWriteDto {
 }
 
 func aPublishDto(sells ...dto.SellOrderWriteDto) dto.TradeCardPublishDto {
-	return dto.TradeCardPublishDto{TradeDate: "2026-11-26", Status: "trade",
+	return dto.TradeCardPublishDto{TradeDate: "2026-11-26", Status: "trade", PublishedBy: "desk-chief",
 		BuyOrders: []dto.BuyOrderWriteDto{aPublishedBuy()}, SellOrders: sells}
 }
 
@@ -49,6 +49,7 @@ func TestTradeCardApplicationPublishesANewCard(t *testing.T) {
 
 	require.NoError(t, publishError)
 	assert.Equal(t, "2026-11-26", cardDto.TradeDate)
+	assert.Equal(t, "desk-chief", cardDto.PublishedBy)
 	require.Len(t, cardDto.BuyOrders, 1)
 	assert.Equal(t, "order-2303", cardDto.BuyOrders[0].ID)
 	assert.Equal(t, "pending", cardDto.BuyOrders[0].Status)
@@ -265,7 +266,7 @@ func TestTradeCardApplicationListsAMonthNewestFirst(t *testing.T) {
 		t.Run(testCase.name, func(t *testing.T) {
 			testHarness := newHarness(t, "2026-12-01 08:00")
 			testHarness.cardRepository.EXPECT().ListByMonth(gomock.Any(), testCase.expectedMonth).Return([]entities.TradeCard{
-				{TradeDate: "2026-11-26", Status: "trade", Orders: []entities.TradeOrder{
+				{TradeDate: "2026-11-26", Status: "trade", PublishedBy: "desk-chief", Orders: []entities.TradeOrder{
 					{Side: "buy", Shares: 1}, {Side: "buy", Shares: 1}, {Side: "sell", Shares: 1}}},
 				{TradeDate: "2026-11-25", Status: "trade", Orders: []entities.TradeOrder{
 					{Side: "buy", Shares: 90, Fills: []entities.OrderFill{{Shares: 90}}}}},
@@ -275,7 +276,7 @@ func TestTradeCardApplicationListsAMonthNewestFirst(t *testing.T) {
 
 			require.NoError(t, listError)
 			assert.Equal(t, []dto.TradeCardSummaryDto{
-				{TradeDate: "2026-11-26", Status: "trade", BuyCount: 2, SellCount: 1, FilledOrderCount: 0},
+				{TradeDate: "2026-11-26", Status: "trade", BuyCount: 2, SellCount: 1, FilledOrderCount: 0, PublishedBy: "desk-chief"},
 				{TradeDate: "2026-11-25", Status: "trade", BuyCount: 1, SellCount: 0, FilledOrderCount: 1},
 			}, summaries)
 		})

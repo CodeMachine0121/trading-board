@@ -57,6 +57,7 @@ type TradeCardWire = {
   buyOrders?: BuyOrderWire[] | null
   sellOrders?: SellOrderWire[] | null
   publishedAt?: string | null
+  publishedBy?: string | null
 }
 
 type TradeCardSummaryWire = {
@@ -137,6 +138,7 @@ export class TradeCardProxy extends BoardApiProxy implements ITradeCardProxy {
         (orderWire.fills ?? []).map(toFill),
       )),
       tradeCardWire.publishedAt ? new Date(tradeCardWire.publishedAt) : null,
+      tradeCardWire.publishedBy ?? '',
     )
   }
 }

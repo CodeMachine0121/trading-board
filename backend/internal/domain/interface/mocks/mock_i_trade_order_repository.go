@@ -73,15 +73,15 @@ func (mr *MockITradeOrderRepositoryMockRecorder) ListWithFills(executionContext 
 }
 
 // MarkSkipped mocks base method.
-func (m *MockITradeOrderRepository) MarkSkipped(executionContext context.Context, orderID string) error {
+func (m *MockITradeOrderRepository) MarkSkipped(executionContext context.Context, orderID, skippedBy string) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "MarkSkipped", executionContext, orderID)
+	ret := m.ctrl.Call(m, "MarkSkipped", executionContext, orderID, skippedBy)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // MarkSkipped indicates an expected call of MarkSkipped.
-func (mr *MockITradeOrderRepositoryMockRecorder) MarkSkipped(executionContext, orderID any) *gomock.Call {
+func (mr *MockITradeOrderRepositoryMockRecorder) MarkSkipped(executionContext, orderID, skippedBy any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MarkSkipped", reflect.TypeOf((*MockITradeOrderRepository)(nil).MarkSkipped), executionContext, orderID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MarkSkipped", reflect.TypeOf((*MockITradeOrderRepository)(nil).MarkSkipped), executionContext, orderID, skippedBy)
 }

@@ -7,4 +7,6 @@ type TradeCardPublishDto struct {
 	Note       string
 	BuyOrders  []BuyOrderWriteDto
 	SellOrders []SellOrderWriteDto
+	// PublishedBy is the member name of the API key that published the card.
+	PublishedBy string
 }

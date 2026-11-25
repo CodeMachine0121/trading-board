@@ -7,7 +7,8 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// CorsMiddleware lets the configured frontends read responses from another origin.
+// CorsMiddleware lets the configured frontends read responses from another origin, with credentials, so the
+// refresh-token cookie travels to the OAuth endpoints.
 type CorsMiddleware struct {
 	allowedOrigins []string
 }
@@ -21,6 +22,7 @@ func (corsMiddleware *CorsMiddleware) Handle(ginContext *gin.Context) {
 	if origin != "" && slices.Contains(corsMiddleware.allowedOrigins, origin) {
 		headers := ginContext.Writer.Header()
 		headers.Set("Access-Control-Allow-Origin", origin)
+		headers.Set("Access-Control-Allow-Credentials", "true")
 		headers.Set("Access-Control-Allow-Methods", "GET, POST, PUT, OPTIONS")
 		headers.Set("Access-Control-Allow-Headers", "Authorization, Content-Type, X-Api-Key")
 		headers.Set("Access-Control-Max-Age", "600")

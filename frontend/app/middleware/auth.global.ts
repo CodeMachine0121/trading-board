@@ -1,18 +1,12 @@
-import { LOGIN_PATH } from '~/plugins/dependencies'
+import { useSignInFlow } from '~/composables/use-sign-in-flow'
 
 /**
- * 把關：沒登入（或登入已過期）就只看得到登入畫面；已登入的人不必再看到登入畫面。
+ * 把關：每次換頁前問 useSignInFlow 該不該改去別頁（規則與測試都在那裡）。
  * 全域中介層而不是每一頁自己判斷——一頁忘了寫就是一個洞。
  */
-export default defineNuxtRouteMiddleware((to) => {
-  const { $userSessionApplication } = useNuxtApp()
-  const signedIn = $userSessionApplication.isSignedIn()
-  const goingToLogin = to.path === LOGIN_PATH
-
-  if (!signedIn && !goingToLogin) {
-    return navigateTo(LOGIN_PATH)
-  }
-  if (signedIn && goingToLogin) {
-    return navigateTo('/')
+export default defineNuxtRouteMiddleware(async (to) => {
+  const redirectTo = await useSignInFlow(useNuxtApp().$userSessionApplication, navigateTo).guard(to.path)
+  if (redirectTo !== undefined) {
+    return navigateTo(redirectTo)
   }
 })

@@ -1,20 +1,25 @@
 import { MonthSummaryApplication } from '~/application/month-summary-application'
 import { PositionApplication } from '~/application/position-application'
 import { TradeCardApplication } from '~/application/trade-card-application'
+import { ApiKeyApplication } from '~/application/api-key-application'
 import { UserSessionApplication } from '~/application/user-session-application'
+import { OAuthClientVo } from '~/domain/models/vo/oauth-client-vo'
+import { ApiKeyService } from '~/domain/service/api-key-service'
 import { MonthSummaryService } from '~/domain/service/month-summary-service'
 import { PositionService } from '~/domain/service/position-service'
 import { TradeCardService } from '~/domain/service/trade-card-service'
 import { UserSessionService } from '~/domain/service/user-session-service'
+import { ApiKeyProxy } from '~/infrastructure/proxy/api-key-proxy'
 import { AuthProxy } from '~/infrastructure/proxy/auth-proxy'
+import { BrowserClipboardProxy } from '~/infrastructure/proxy/browser-clipboard-proxy'
+import { BrowserPendingSignInStorageProxy } from '~/infrastructure/proxy/browser-pending-sign-in-storage-proxy'
+import { MemorySessionStorageProxy } from '~/infrastructure/proxy/memory-session-storage-proxy'
 import { MonthSummaryProxy } from '~/infrastructure/proxy/month-summary-proxy'
 import { OrderProxy } from '~/infrastructure/proxy/order-proxy'
 import { PositionProxy } from '~/infrastructure/proxy/position-proxy'
-import { SessionStorageProxy } from '~/infrastructure/proxy/session-storage-proxy'
 import { TradeCardProxy } from '~/infrastructure/proxy/trade-card-proxy'
-
-/** 登入畫面的路徑。中介層與被登出時的導頁都看這一個。 */
-export const LOGIN_PATH = '/login'
+import { LOGIN_PATH, SIGN_IN_CALLBACK_PATH } from '~/composables/use-sign-in-flow'
+import { WebCryptoSignInChallengeProxy } from '~/infrastructure/proxy/web-crypto-sign-in-challenge-proxy'
 
 /**
  * 組裝根：唯一知道所有具體型別的地方。
@@ -23,34 +28,47 @@ export const LOGIN_PATH = '/login'
  */
 export default defineNuxtPlugin(() => {
   // 打真的板子還是打開發用的模擬後端，只看這一個設定（NUXT_PUBLIC_API_BASE_URL）。
-  const apiBaseUrl = useRuntimeConfig().public.apiBaseUrl
+  const runtimeConfig = useRuntimeConfig().public
+  const apiBaseUrl = runtimeConfig.apiBaseUrl
+  const oauthClient = new OAuthClientVo(runtimeConfig.oauthClientId, `${window.location.origin}${SIGN_IN_CALLBACK_PATH}`)
 
-  // 記著這台瀏覽器那一段登入的只有一份：每一發請求都從它取憑證，被登出時也是它被清掉。
-  const sessionStorageProxy = new SessionStorageProxy()
+  // 短效通行憑證只活在這個頁面的記憶體裡；每一發請求都經由 userSessionApplication 拿它（快過期會先續期）。
+  const sessionStorageProxy = new MemorySessionStorageProxy()
+  const accessTokenSource = (): Promise<string | null> => userSessionApplication.accessToken()
 
-  const userSessionApplication = new UserSessionApplication(
-    new UserSessionService(new AuthProxy(apiBaseUrl, sessionStorageProxy), sessionStorageProxy),
-  )
-
-  // 板子說這一段登入不算數了：清掉它、回登入畫面。發請求的那一層不懂導頁，所以在這裡接線。
+  // 板子說這一段登入不算數了：忘掉它、回登入畫面。發請求的那一層不懂導頁，所以在這裡接線。
   const onSignedOut = (): void => {
-    userSessionApplication.signOut()
+    userSessionApplication.forgetSession()
     void navigateTo(LOGIN_PATH)
   }
 
+  const userSessionApplication: UserSessionApplication = new UserSessionApplication(
+    new UserSessionService(
+      new AuthProxy(apiBaseUrl, accessTokenSource, onSignedOut, oauthClient),
+      sessionStorageProxy,
+      new BrowserPendingSignInStorageProxy(),
+      new WebCryptoSignInChallengeProxy(),
+    ),
+  )
+
   const tradeCardApplication = new TradeCardApplication(
     new TradeCardService(
-      new TradeCardProxy(apiBaseUrl, sessionStorageProxy, onSignedOut),
-      new OrderProxy(apiBaseUrl, sessionStorageProxy, onSignedOut),
+      new TradeCardProxy(apiBaseUrl, accessTokenSource, onSignedOut),
+      new OrderProxy(apiBaseUrl, accessTokenSource, onSignedOut),
     ),
   )
 
   const positionApplication = new PositionApplication(
-    new PositionService(new PositionProxy(apiBaseUrl, sessionStorageProxy, onSignedOut)),
+    new PositionService(new PositionProxy(apiBaseUrl, accessTokenSource, onSignedOut)),
   )
 
   const monthSummaryApplication = new MonthSummaryApplication(
-    new MonthSummaryService(new MonthSummaryProxy(apiBaseUrl, sessionStorageProxy, onSignedOut)),
+    new MonthSummaryService(new MonthSummaryProxy(apiBaseUrl, accessTokenSource, onSignedOut)),
+  )
+
+  const apiKeyApplication = new ApiKeyApplication(
+    new ApiKeyService(new ApiKeyProxy(apiBaseUrl, accessTokenSource, onSignedOut)),
+    new BrowserClipboardProxy(),
   )
 
   return {
@@ -59,6 +77,7 @@ export default defineNuxtPlugin(() => {
       tradeCardApplication,
       positionApplication,
       monthSummaryApplication,
+      apiKeyApplication,
     },
   }
 })

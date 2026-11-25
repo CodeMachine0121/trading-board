@@ -2,7 +2,7 @@ import { mount } from '@vue/test-utils'
 import { describe, expect, it } from 'vitest'
 import TradeCardView from '~/components/organisms/TradeCardView.vue'
 import type { OrderActionDto } from '~/domain/models/dto/order-action-dto'
-import type { TradeCardDto } from '~/domain/models/dto/trade-card-dto'
+import { TradeCardDto } from '~/domain/models/dto/trade-card-dto'
 import { aNoTradeCardDto, anOrderDto, aTradeCardDto } from '../../fixtures/dtos'
 
 function mountView(card: TradeCardDto, failedOrderId: string | null = null, failureMessage: string | null = null) {
@@ -19,6 +19,20 @@ describe('TradeCardView', () => {
     expect(wrapper.find('[data-testid="buy-section"]').text()).toContain('聯電 2303')
     expect(wrapper.find('[data-testid="sell-section"]').text()).toContain('晶豪科 3006')
     expect(wrapper.find('[data-testid="no-trade-banner"]').exists()).toBe(false)
+  })
+
+  it.each([
+    ['有發布者 → 顯示那一行', '發布者：desk-chief', true],
+    ['沒有發布者 → 不顯示', '', false],
+  ])('%s', (_, publisherText, shown) => {
+    const card = aTradeCardDto()
+    const wrapper = mountView(new TradeCardDto(card.tradeDate, card.tradeDateLabel, card.isNoTrade, card.note,
+      card.buyOrders, card.sellOrders, card.emptyBuyText, card.emptySellText, card.publishedAtText, publisherText))
+
+    expect(wrapper.find('[data-testid="card-publisher"]').exists()).toBe(shown)
+    if (shown) {
+      expect(wrapper.find('[data-testid="card-publisher"]').text()).toBe('發布者：desk-chief')
+    }
   })
 
   it('沒有賣出委託 → 賣出段說「無賣出委託」', () => {

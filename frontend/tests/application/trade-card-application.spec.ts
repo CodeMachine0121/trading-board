@@ -6,6 +6,7 @@ import type { IOrderProxy } from '~/domain/interface/i-order-proxy'
 import type { ITradeCardProxy } from '~/domain/interface/i-trade-card-proxy'
 import { FillReportDto } from '~/domain/models/dto/fill-report-dto'
 import { OrderActionDto } from '~/domain/models/dto/order-action-dto'
+import { TradeCard } from '~/domain/models/entities/trade-card'
 import { TradeCardSummary } from '~/domain/models/entities/trade-card-summary'
 import { TradeCardService } from '~/domain/service/trade-card-service'
 import { aBuyOrder, aFill, aNoTradeCard, aSellOrder, aTradeCard } from '../fixtures/entities'
@@ -39,6 +40,20 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.useRealTimers()
+})
+
+describe('TradeCardApplication：交易卡的發布者', () => {
+  it.each([
+    ['由 desk-chief 發布 → 「發布者：desk-chief」', 'desk-chief', '發布者：desk-chief'],
+    ['記錄發布者之前的卡 → 沒有發布者這一行', '', ''],
+  ])('%s', async (_, publishedBy, expectedText) => {
+    const { tradeCardProxy, application } = setUp()
+    const card = aTradeCard()
+    tradeCardProxy.fetchLatestCard.mockResolvedValue(new TradeCard(card.tradeDate, card.status, card.note,
+      card.buyOrders, card.sellOrders, card.publishedAt, publishedBy))
+
+    expect((await application.fetchLatestCard())?.publisherText).toBe(expectedText)
+  })
 })
 
 describe('TradeCardApplication：今日的交易卡', () => {

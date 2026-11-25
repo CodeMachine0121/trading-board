@@ -17,6 +17,23 @@ import (
 
 var taipei, _ = time.LoadLocation("Asia/Taipei")
 
+// Fake credentials for tests only; the hash is never checked for real because the password proxy is mocked.
+const (
+	ownerEmail        = "owner@example.com"
+	ownerPasswordHash = "$2a$10$test-only-hash"
+	clientID          = "trading-board-web"
+	redirectUri       = "http://localhost:3000/auth/callback"
+)
+
+func taipeiTimeWithSeconds(text string) time.Time {
+	parsed, parseError := time.ParseInLocation("2006-01-02 15:04:05", text, taipei)
+	if parseError != nil {
+		panic(parseError)
+	}
+
+	return parsed
+}
+
 func taipeiTime(text string) time.Time {
 	parsed, parseError := time.ParseInLocation("2006-01-02 15:04", text, taipei)
 	if parseError != nil {
@@ -38,14 +55,29 @@ type harness struct {
 	transactionRepository *mocks.MockITransactionRepository
 	clockProxy            *mocks.MockIClockProxy
 	accessTokenProxy      *mocks.MockIAccessTokenProxy
+	apiKeyRepository      *mocks.MockIApiKeyRepository
+	codeRepository        *mocks.MockIAuthorizationCodeRepository
+	refreshRepository     *mocks.MockIRefreshTokenRepository
+	failureRepository     *mocks.MockISignInFailureRepository
+	passwordHashProxy     *mocks.MockIPasswordHashProxy
+	randomTokenProxy      *mocks.MockIRandomTokenProxy
+
+	// rolledBack counts units of work whose writes the real transaction would have rolled back (work returned an error).
+	rolledBack int
 
 	authenticationApplication *application.AuthenticationApplication
+	authorizationApplication  *application.AuthorizationApplication
+	apiKeyApplication         *application.ApiKeyApplication
 	tradeCardApplication      *application.TradeCardApplication
 	tradeOrderApplication     *application.TradeOrderApplication
 	portfolioApplication      *application.PortfolioApplication
 }
 
 func newHarness(t *testing.T, now string) *harness {
+	return newHarnessAt(t, taipeiTime(now))
+}
+
+func newHarnessAt(t *testing.T, now time.Time) *harness {
 	controller := gomock.NewController(t)
 	testHarness := &harness{
 		cardRepository:        mocks.NewMockITradeCardRepository(controller),
@@ -54,20 +86,41 @@ func newHarness(t *testing.T, now string) *harness {
 		transactionRepository: mocks.NewMockITransactionRepository(controller),
 		clockProxy:            mocks.NewMockIClockProxy(controller),
 		accessTokenProxy:      mocks.NewMockIAccessTokenProxy(controller),
+		apiKeyRepository:      mocks.NewMockIApiKeyRepository(controller),
+		codeRepository:        mocks.NewMockIAuthorizationCodeRepository(controller),
+		refreshRepository:     mocks.NewMockIRefreshTokenRepository(controller),
+		failureRepository:     mocks.NewMockISignInFailureRepository(controller),
+		passwordHashProxy:     mocks.NewMockIPasswordHashProxy(controller),
+		randomTokenProxy:      mocks.NewMockIRandomTokenProxy(controller),
 	}
-	testHarness.clockProxy.EXPECT().Now().Return(taipeiTime(now)).AnyTimes()
+	testHarness.clockProxy.EXPECT().Now().Return(now).AnyTimes()
 	testHarness.transactionRepository.EXPECT().Exclusively(gomock.Any(), gomock.Any()).DoAndReturn(
 		func(executionContext context.Context, work func(context.Context) error) error {
-			return work(executionContext)
+			workError := work(executionContext)
+			if workError != nil {
+				testHarness.rolledBack++
+			}
+
+			return workError
 		}).AnyTimes()
 
 	calendar := domains.NewBusinessCalendarDomain(taipei)
 	ledgerLoader := service.NewTradeLedgerLoader(testHarness.orderRepository, testHarness.cardRepository,
 		testHarness.clockProxy, calendar, vo.BudgetPolicyVo{MonthlyAllocation: money("10000"), MonthEndStartDay: 22})
 
+	ownerAccount := domains.NewOwnerAccountDomain(vo.OwnerAccountVo{Email: ownerEmail, PasswordHash: ownerPasswordHash})
 	testHarness.authenticationApplication = application.NewAuthenticationApplication(service.NewAuthenticationService(
-		domains.NewAccessCredentialDomain(vo.AccessCredentialVo{OwnerUsername: "james", OwnerPassword: "secret", AgentApiKey: "agentkey"}),
-		24*time.Hour, testHarness.accessTokenProxy, testHarness.clockProxy, calendar))
+		ownerAccount, testHarness.apiKeyRepository, testHarness.accessTokenProxy, testHarness.clockProxy, calendar))
+	testHarness.authorizationApplication = application.NewAuthorizationApplication(service.NewAuthorizationService(
+		ownerAccount, vo.OAuthClientVo{ClientID: clientID, RedirectUris: []string{redirectUri}},
+		vo.AuthorizationPolicyVo{AuthorizationCodeLifetime: time.Minute, AccessTokenLifetime: 15 * time.Minute,
+			RefreshTokenLifetime: 30 * 24 * time.Hour},
+		testHarness.codeRepository, testHarness.refreshRepository, testHarness.failureRepository,
+		testHarness.transactionRepository, testHarness.passwordHashProxy, testHarness.randomTokenProxy,
+		testHarness.accessTokenProxy, testHarness.clockProxy))
+	testHarness.apiKeyApplication = application.NewApiKeyApplication(service.NewApiKeyService(
+		testHarness.apiKeyRepository, testHarness.transactionRepository, testHarness.randomTokenProxy,
+		testHarness.clockProxy, calendar))
 	testHarness.tradeCardApplication = application.NewTradeCardApplication(service.NewTradeCardService(
 		testHarness.cardRepository, testHarness.transactionRepository, ledgerLoader, testHarness.clockProxy, calendar))
 	testHarness.tradeOrderApplication = application.NewTradeOrderApplication(service.NewTradeOrderService(
@@ -101,4 +154,17 @@ func aHeldBuyOrder(symbol string, shares int, price string, fee string, filledAt
 
 func gomockAny() gomock.Matcher {
 	return gomock.Any()
+}
+
+// withOwnerAccount rebuilds the sign-in over another configured owner account (for example none at all).
+func (testHarness *harness) withOwnerAccount(account vo.OwnerAccountVo) *harness {
+	testHarness.authorizationApplication = application.NewAuthorizationApplication(service.NewAuthorizationService(
+		domains.NewOwnerAccountDomain(account), vo.OAuthClientVo{ClientID: clientID, RedirectUris: []string{redirectUri}},
+		vo.AuthorizationPolicyVo{AuthorizationCodeLifetime: time.Minute, AccessTokenLifetime: 15 * time.Minute,
+			RefreshTokenLifetime: 30 * 24 * time.Hour},
+		testHarness.codeRepository, testHarness.refreshRepository, testHarness.failureRepository,
+		testHarness.transactionRepository, testHarness.passwordHashProxy, testHarness.randomTokenProxy,
+		testHarness.accessTokenProxy, testHarness.clockProxy))
+
+	return testHarness
 }

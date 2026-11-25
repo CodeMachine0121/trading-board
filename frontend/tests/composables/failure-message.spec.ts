@@ -5,7 +5,7 @@ import { CredentialsRejectedError } from '~/domain/errors/credentials-rejected-e
 
 describe('failureMessageOf：一個失敗要對主人說什麼', () => {
   it.each([
-    ['帳密錯誤 → 照它的話', new CredentialsRejectedError(), '帳號或密碼錯誤'],
+    ['帳密錯誤 → 照它的話', new CredentialsRejectedError(), '電子郵件或密碼錯誤'],
     ['板子拒絕 → 照板子的話', new BoardRejectedError('超出本月剩餘預算'), '超出本月剩餘預算'],
   ])('%s', (_, error, message) => {
     expect(failureMessageOf(error)).toBe(message)

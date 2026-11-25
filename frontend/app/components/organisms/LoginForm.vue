@@ -5,7 +5,7 @@ import AppAlert from '~/components/atoms/AppAlert.vue'
 import AppButton from '~/components/atoms/AppButton.vue'
 import AppInput from '~/components/atoms/AppInput.vue'
 
-// 登入表單。帳密原樣交出去，對不對由板子說。
+// 登入表單：電子郵件與密碼原樣交出去，對不對由板子說。
 defineProps<{
   submitting: boolean
   errorMessage: string | null
@@ -15,24 +15,26 @@ const emit = defineEmits<{
   submit: [credentials: CredentialsDto]
 }>()
 
-const username = ref('')
+const email = ref('')
 const password = ref('')
 </script>
 
 <template>
   <form
     class="login-form"
-    @submit.prevent="emit('submit', new CredentialsDto(username, password))"
+    @submit.prevent="emit('submit', new CredentialsDto(email, password))"
   >
     <h1 class="login-form__title">
       Trading Board
     </h1>
     <AppInput
-      v-model="username"
-      label="帳號"
+      v-model="email"
+      label="電子郵件"
+      type="email"
       autocomplete="username"
+      inputmode="email"
       required
-      data-testid="login-username"
+      data-testid="login-email"
     />
     <AppInput
       v-model="password"

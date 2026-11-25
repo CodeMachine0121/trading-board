@@ -10,7 +10,9 @@ import (
 type Router struct {
 	corsMiddleware           *middlewares.CorsMiddleware
 	authenticationMiddleware *middlewares.AuthenticationMiddleware
+	authorizationController  *controller.AuthorizationController
 	authenticationController *controller.AuthenticationController
+	apiKeyController         *controller.ApiKeyController
 	tradeCardController      *controller.TradeCardController
 	tradeOrderController     *controller.TradeOrderController
 	portfolioController      *controller.PortfolioController
@@ -20,7 +22,9 @@ type Router struct {
 func NewRouter(
 	corsMiddleware *middlewares.CorsMiddleware,
 	authenticationMiddleware *middlewares.AuthenticationMiddleware,
+	authorizationController *controller.AuthorizationController,
 	authenticationController *controller.AuthenticationController,
+	apiKeyController *controller.ApiKeyController,
 	tradeCardController *controller.TradeCardController,
 	tradeOrderController *controller.TradeOrderController,
 	portfolioController *controller.PortfolioController,
@@ -29,7 +33,9 @@ func NewRouter(
 	return &Router{
 		corsMiddleware:           corsMiddleware,
 		authenticationMiddleware: authenticationMiddleware,
+		authorizationController:  authorizationController,
 		authenticationController: authenticationController,
+		apiKeyController:         apiKeyController,
 		tradeCardController:      tradeCardController,
 		tradeOrderController:     tradeOrderController,
 		portfolioController:      portfolioController,
@@ -43,7 +49,15 @@ func (router *Router) Register(engine *gin.Engine) {
 
 	api := engine.Group("/api/v1")
 	api.GET("/health", router.healthController.Check)
-	api.POST("/auth/login", router.authenticationController.SignIn)
+	api.POST("/oauth/authorize", router.authorizationController.Authorize)
+	api.POST("/oauth/token", router.authorizationController.Token)
+	api.POST("/oauth/revoke", router.authorizationController.Revoke)
+
+	ownerOnly := api.Group("", router.authenticationMiddleware.RequireOwner)
+	ownerOnly.GET("/me", router.authenticationController.GetCurrentOwner)
+	ownerOnly.GET("/api-keys", router.apiKeyController.ListApiKeys)
+	ownerOnly.POST("/api-keys", router.apiKeyController.CreateApiKey)
+	ownerOnly.POST("/api-keys/:apiKeyId/revoke", router.apiKeyController.RevokeApiKey)
 
 	api.PUT("/cards/:tradeDate", router.authenticationMiddleware.RequireAgent, router.tradeCardController.PublishCard)
 

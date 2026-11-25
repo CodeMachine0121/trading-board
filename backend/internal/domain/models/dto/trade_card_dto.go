@@ -10,4 +10,6 @@ type TradeCardDto struct {
 	BuyOrders   []OrderDto `json:"buyOrders"`
 	SellOrders  []OrderDto `json:"sellOrders"`
 	PublishedAt time.Time  `json:"publishedAt"`
+	// PublishedBy is empty for cards published before attribution existed.
+	PublishedBy string `json:"publishedBy"`
 }

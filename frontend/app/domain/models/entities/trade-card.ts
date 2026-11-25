@@ -13,6 +13,8 @@ export class TradeCard {
     readonly buyOrders: readonly BuyOrder[],
     readonly sellOrders: readonly SellOrder[],
     readonly publishedAt: Date | null,
+    /** 發布這張卡的顧問團隊成員；記錄發布者之前的卡是空字串。 */
+    readonly publishedBy: string = '',
   ) {}
 
   toDomain(calendar: TaipeiCalendarDomain): TradeCardDomain {

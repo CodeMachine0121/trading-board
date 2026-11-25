@@ -50,6 +50,13 @@
     max-width: control-size('content-max');
   }
 
+  &__actions {
+    display: flex;
+    align-items: center;
+    gap: spacing('xs');
+    min-width: 0;
+  }
+
   &__brand {
     color: color('text-strong');
     font-weight: font-weight('bold');

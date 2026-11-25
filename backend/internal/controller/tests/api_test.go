@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/CodeMachine0121/trading-board/backend/internal/domain/models/entities"
-	"github.com/CodeMachine0121/trading-board/backend/internal/domain/models/vo"
 	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -29,41 +28,17 @@ func TestHealthAnswersWithoutCredentials(t *testing.T) {
 	}
 }
 
-func TestSignInHandsOutAPass(t *testing.T) {
-	testApi := newApi(t)
-	expiresAt := time.Date(2026, 11, 26, 12, 0, 0, 0, time.UTC)
-	testApi.accessTokenProxy.EXPECT().Issue(gomock.Any()).Return(vo.AccessTokenVo{AccessToken: "signed", ExpiresAt: expiresAt}, nil)
-
-	result := testApi.call(t, http.MethodPost, "/api/v1/auth/login", `{"username":"james","password":"secret"}`, nil)
-
-	require.Equal(t, http.StatusOK, result.status)
-	assert.Equal(t, "signed", result.body["accessToken"])
-	assert.Equal(t, "2026-11-26T20:00:00+08:00", result.body["expiresAt"])
-}
-
-func TestSignInRefusesWrongCredentialsAndUnreadableBodies(t *testing.T) {
-	testApi := newApi(t)
-
-	wrong := testApi.call(t, http.MethodPost, "/api/v1/auth/login", `{"username":"james","password":"guess"}`, nil)
-	unreadable := testApi.call(t, http.MethodPost, "/api/v1/auth/login", `{`, nil)
-
-	assert.Equal(t, http.StatusUnauthorized, wrong.status)
-	assert.Equal(t, "unauthenticated", errorCodeOf(wrong))
-	assert.Nil(t, wrong.body["accessToken"])
-	assert.Equal(t, http.StatusBadRequest, unreadable.status)
-	assert.Equal(t, "invalidRequest", errorCodeOf(unreadable))
-}
-
-func TestReadingRequiresAPassOrTheAgentKey(t *testing.T) {
+func TestReadingRequiresAnAccessTokenOrAnActiveApiKey(t *testing.T) {
 	cases := []struct {
 		name           string
 		headers        map[string]string
 		expectedStatus int
 	}{
-		{name: "no pass and no key", headers: nil, expectedStatus: http.StatusUnauthorized},
-		{name: "an expired pass", headers: map[string]string{"Authorization": "Bearer expired"}, expectedStatus: http.StatusUnauthorized},
-		{name: "the agent key", headers: asAgent(), expectedStatus: http.StatusOK},
-		{name: "the owner's pass", headers: asOwner(), expectedStatus: http.StatusOK},
+		{name: "no access token and no key", headers: nil, expectedStatus: http.StatusUnauthorized},
+		{name: "an expired access token", headers: map[string]string{"Authorization": "Bearer expired"}, expectedStatus: http.StatusUnauthorized},
+		{name: "an unknown or revoked key", headers: map[string]string{"X-Api-Key": "tbk_revoked"}, expectedStatus: http.StatusUnauthorized},
+		{name: "a member's key", headers: asAgent(), expectedStatus: http.StatusOK},
+		{name: "the owner's access token", headers: asOwner(), expectedStatus: http.StatusOK},
 	}
 
 	for _, testCase := range cases {
@@ -93,6 +68,7 @@ func TestOnlyTheAgentKeyPublishes(t *testing.T) {
 
 	assert.Equal(t, http.StatusUnauthorized, asOwnerResult.status)
 	assert.Equal(t, "unauthenticated", errorCodeOf(asOwnerResult))
+	assert.Equal(t, "只有顧問團隊的 API 金鑰可以發布交易卡", errorMessageOf(asOwnerResult))
 	assert.Equal(t, http.StatusUnauthorized, anonymous.status)
 }
 
@@ -111,6 +87,7 @@ func TestPublishingAnswersTheFullCardWithDecimalsAsStrings(t *testing.T) {
 	assert.Equal(t, "2026-11-26", result.body["tradeDate"])
 	assert.Equal(t, "trade", result.body["status"])
 	assert.Equal(t, "2026-11-25T20:00:00+08:00", result.body["publishedAt"])
+	assert.Equal(t, "desk-chief", result.body["publishedBy"])
 	assert.Equal(t, []any{}, result.body["sellOrders"])
 	buyOrder := result.body["buyOrders"].([]any)[0].(map[string]any)
 	assert.Equal(t, "order-1", buyOrder["id"])
@@ -179,7 +156,7 @@ func TestReadingCards(t *testing.T) {
 	assert.Equal(t, "cardNotFound", errorCodeOf(missing))
 	require.Equal(t, http.StatusOK, listed.status)
 	assert.Equal(t, []map[string]any{{"tradeDate": "2026-11-26", "status": "trade", "buyCount": float64(1),
-		"sellCount": float64(0), "filledOrderCount": float64(0)}}, listed.list)
+		"sellCount": float64(0), "filledOrderCount": float64(0), "publishedBy": ""}}, listed.list)
 	assert.Equal(t, http.StatusNotFound, noLatest.status)
 	assert.Equal(t, http.StatusBadRequest, badMonth.status)
 }
@@ -205,7 +182,7 @@ func TestReportingAFill(t *testing.T) {
 	assert.Equal(t, float64(90), result.body["filledShares"])
 	fill := result.body["fills"].([]any)[0].(map[string]any)
 	assert.Equal(t, map[string]any{"id": "fill-1", "price": "52.5", "shares": float64(90), "fee": "4", "amount": "4725",
-		"filledAt": "2026-11-26T09:05:00+08:00"}, fill)
+		"filledAt": "2026-11-26T09:05:00+08:00", "reportedBy": "owner"}, fill)
 }
 
 func TestReportingAFillMapsRefusalsToStatuses(t *testing.T) {
@@ -255,13 +232,14 @@ func TestSkippingAnOrder(t *testing.T) {
 	filled.Fills = []entities.OrderFill{{ID: "f", Shares: 90}}
 	testApi.orderRepository.EXPECT().FindByID(gomock.Any(), "order-1").Return(storedCard().Orders[0], true, nil)
 	testApi.orderRepository.EXPECT().FindByID(gomock.Any(), "order-2").Return(filled, true, nil)
-	testApi.orderRepository.EXPECT().MarkSkipped(gomock.Any(), "order-1").Return(nil)
+	testApi.orderRepository.EXPECT().MarkSkipped(gomock.Any(), "order-1", "desk-chief").Return(nil)
 
-	skipped := testApi.call(t, http.MethodPost, "/api/v1/orders/order-1/skip", "", asOwner())
+	skipped := testApi.call(t, http.MethodPost, "/api/v1/orders/order-1/skip", "", asAgent())
 	refused := testApi.call(t, http.MethodPost, "/api/v1/orders/order-2/skip", "", asOwner())
 
 	assert.Equal(t, http.StatusOK, skipped.status)
 	assert.Equal(t, "skipped", skipped.body["status"])
+	assert.Equal(t, "desk-chief", skipped.body["skippedBy"])
 	assert.Equal(t, http.StatusConflict, refused.status)
 	assert.Equal(t, "orderAlreadyFilled", errorCodeOf(refused))
 }
@@ -302,6 +280,7 @@ func TestCorsLetsTheConfiguredFrontendRead(t *testing.T) {
 	assert.Equal(t, http.StatusNoContent, preflight.status)
 	assert.Equal(t, "https://trading-board.coding-afternoon.com", preflight.header.Get("Access-Control-Allow-Origin"))
 	assert.Contains(t, preflight.header.Get("Access-Control-Allow-Headers"), "X-Api-Key")
+	assert.Equal(t, "true", preflight.header.Get("Access-Control-Allow-Credentials"))
 	assert.Empty(t, stranger.header.Get("Access-Control-Allow-Origin"))
 }
 

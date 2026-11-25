@@ -1,6 +1,6 @@
 import type { Session } from '~/domain/models/entities/session'
 
-/** 這台瀏覽器記著的那一段登入。三個方法都不拋：記不住與沒登入過，對主人是同一件事。 */
+/** 這個頁面手上的那一段登入。只放在記憶體：關掉或重新整理頁面就沒了，靠續期找回來。 */
 export interface ISessionStorageProxy {
   readSession(): Session | null
   writeSession(session: Session): void

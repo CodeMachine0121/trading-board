@@ -13,4 +13,6 @@ type OrderFillDto struct {
 	Fee      decimal.Decimal `json:"fee"`
 	Amount   decimal.Decimal `json:"amount"`
 	FilledAt time.Time       `json:"filledAt"`
+	// ReportedBy is empty for fills reported before attribution existed.
+	ReportedBy string `json:"reportedBy"`
 }

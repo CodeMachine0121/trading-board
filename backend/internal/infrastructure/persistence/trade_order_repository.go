@@ -54,9 +54,12 @@ func (orderRepository *TradeOrderRepository) ListWithFills(executionContext cont
 	return orders, nil
 }
 
-func (orderRepository *TradeOrderRepository) MarkSkipped(executionContext context.Context, orderID string) error {
-	if updateError := orderRepository.database.within(executionContext).
-		Model(&entities.TradeOrder{ID: orderID}).Update("is_skipped", true).Error; updateError != nil {
+func (orderRepository *TradeOrderRepository) MarkSkipped(
+	executionContext context.Context, orderID string, skippedBy string,
+) error {
+	if updateError := orderRepository.database.within(executionContext).Model(&entities.TradeOrder{}).
+		Where(&entities.TradeOrder{ID: orderID}).Where("is_skipped = ?", false).
+		Updates(map[string]any{"is_skipped": true, "skipped_by": skippedBy}).Error; updateError != nil {
 		return fmt.Errorf("mark trade order %s skipped: %w", orderID, updateError)
 	}
 

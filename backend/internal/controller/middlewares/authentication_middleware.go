@@ -16,50 +16,63 @@ const (
 	apiKeyHeader = "X-Api-Key"
 )
 
-// AuthenticationMiddleware lets through the owner's pass or the agent key, as each route allows.
+// AuthenticationMiddleware lets through the owner's access token or a member's API key, as each route allows,
+// and leaves the identified caller on the request for attribution.
 type AuthenticationMiddleware struct {
 	authenticationApplication *application.AuthenticationApplication
 	errorPresenter            *controller.ErrorPresenter
+	callerContext             *controller.CallerContext
 }
 
 func NewAuthenticationMiddleware(
-	authenticationApplication *application.AuthenticationApplication, errorPresenter *controller.ErrorPresenter,
+	authenticationApplication *application.AuthenticationApplication,
+	errorPresenter *controller.ErrorPresenter,
+	callerContext *controller.CallerContext,
 ) *AuthenticationMiddleware {
 	return &AuthenticationMiddleware{
 		authenticationApplication: authenticationApplication,
 		errorPresenter:            errorPresenter,
+		callerContext:             callerContext,
 	}
 }
 
-// RequireOwnerOrAgent admits the signed-in owner and the agent team alike.
+// RequireOwnerOrAgent admits the signed-in owner and every agent-team member alike.
 func (authenticationMiddleware *AuthenticationMiddleware) RequireOwnerOrAgent(ginContext *gin.Context) {
-	if _, identifyError := authenticationMiddleware.identify(ginContext); identifyError != nil {
-		authenticationMiddleware.errorPresenter.Respond(ginContext, identifyError)
-		return
-	}
-	ginContext.Next()
+	authenticationMiddleware.admit(ginContext, "", nil)
 }
 
-// RequireAgent admits only the agent key; the owner's pass alone is not enough to publish.
+// RequireAgent admits only a member's API key; the owner's access token alone is not enough to publish.
 func (authenticationMiddleware *AuthenticationMiddleware) RequireAgent(ginContext *gin.Context) {
-	callerDto, identifyError := authenticationMiddleware.identify(ginContext)
-	if identifyError == nil && callerDto.Role != string(vo.CallerRoleAgent) {
-		identifyError = domains.AuthenticationRequired("只有顧問團隊的 API 金鑰可以發布交易卡")
-	}
-	if identifyError != nil {
-		authenticationMiddleware.errorPresenter.Respond(ginContext, identifyError)
-		return
-	}
-	ginContext.Next()
+	authenticationMiddleware.admit(ginContext, vo.CallerRoleAgent,
+		domains.AuthenticationRequired("只有顧問團隊的 API 金鑰可以發布交易卡"))
 }
 
-func (authenticationMiddleware *AuthenticationMiddleware) identify(ginContext *gin.Context) (dto.CallerDto, error) {
+// RequireOwner admits only the signed-in owner: an API key can never manage API keys.
+func (authenticationMiddleware *AuthenticationMiddleware) RequireOwner(ginContext *gin.Context) {
+	authenticationMiddleware.admit(ginContext, vo.CallerRoleOwner, domains.Forbidden("只有登入的擁有者可以使用"))
+}
+
+// admit identifies the caller and, when a role is required, answers wrongRole to anybody else.
+func (authenticationMiddleware *AuthenticationMiddleware) admit(
+	ginContext *gin.Context, requiredRole vo.CallerRoleVo, wrongRole error,
+) {
 	accessToken := ""
 	authorization := ginContext.GetHeader("Authorization")
 	if strings.HasPrefix(strings.ToLower(authorization), bearerScheme) {
 		accessToken = strings.TrimSpace(authorization[len(bearerScheme):])
 	}
 
-	return authenticationMiddleware.authenticationApplication.IdentifyCaller(ginContext.Request.Context(),
+	callerDto, identifyError := authenticationMiddleware.authenticationApplication.IdentifyCaller(
+		ginContext.Request.Context(),
 		dto.CallerCredentialDto{ApiKey: ginContext.GetHeader(apiKeyHeader), AccessToken: accessToken})
+	if identifyError == nil && requiredRole != "" && callerDto.Role != string(requiredRole) {
+		identifyError = wrongRole
+	}
+	if identifyError != nil {
+		authenticationMiddleware.errorPresenter.Respond(ginContext, identifyError)
+		return
+	}
+
+	authenticationMiddleware.callerContext.Remember(ginContext, callerDto)
+	ginContext.Next()
 }

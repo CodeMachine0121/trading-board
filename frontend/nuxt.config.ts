@@ -37,6 +37,9 @@ export default defineNuxtConfig({
       // 程式碼裡沒有任何假實作，所以換成真的後端只是改這一個設定。
       // 靜態輸出時這個值會被寫進 bundle：正式環境由 Dockerfile 的 build 參數決定。
       apiBaseUrl: '/mock/api/v1',
+      // 這個網頁在板子登記的 OAuth 公開用戶端代號；以 NUXT_PUBLIC_OAUTH_CLIENT_ID 覆寫。
+      // 登入後轉回來的網址是「這個網頁的網域 + /auth/callback」，板子那邊要允許同一個網址。
+      oauthClientId: 'trading-board-web',
     },
   },
   srcDir: 'app/',

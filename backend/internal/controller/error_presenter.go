@@ -35,6 +35,8 @@ func (errorPresenter *ErrorPresenter) Respond(ginContext *gin.Context, err error
 		status = http.StatusNotFound
 	case errors.Is(err, domains.ErrConflict):
 		status = http.StatusConflict
+	case errors.Is(err, domains.ErrForbidden):
+		status = http.StatusForbidden
 	}
 
 	ginContext.AbortWithStatusJSON(status, models.ErrorResponse{
@@ -44,4 +46,28 @@ func (errorPresenter *ErrorPresenter) Respond(ginContext *gin.Context, err error
 // RespondUnreadableBody answers a body that is not even the right JSON shape.
 func (errorPresenter *ErrorPresenter) RespondUnreadableBody(ginContext *gin.Context, bindError error) {
 	errorPresenter.Respond(ginContext, domains.ValidationFailed("invalidRequest", "無法讀取送出的內容："+bindError.Error()))
+}
+
+// RespondOAuth answers the sign-in endpoints in OAuth's own shape: { "error", "error_description" }.
+func (errorPresenter *ErrorPresenter) RespondOAuth(ginContext *gin.Context, err error) {
+	var oauthError domains.OAuthError
+	if !errors.As(err, &oauthError) {
+		log.Printf("%s %s failed: %v", ginContext.Request.Method, ginContext.FullPath(), err)
+		ginContext.AbortWithStatusJSON(http.StatusInternalServerError, models.OAuthErrorResponse{
+			Error: "server_error", ErrorDescription: "伺服器發生錯誤，請稍後再試"})
+		return
+	}
+
+	status := http.StatusBadRequest
+	switch {
+	case errors.Is(err, domains.ErrAuthenticationRequired):
+		status = http.StatusUnauthorized
+	case errors.Is(err, domains.ErrForbidden):
+		status = http.StatusForbidden
+	case errors.Is(err, domains.ErrTooManyAttempts):
+		status = http.StatusTooManyRequests
+	}
+
+	ginContext.AbortWithStatusJSON(status, models.OAuthErrorResponse{
+		Error: oauthError.Code, ErrorDescription: oauthError.Description})
 }

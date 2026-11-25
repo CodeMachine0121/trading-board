@@ -150,7 +150,7 @@ func TestTradeOrderDomainSkipping(t *testing.T) {
 		t.Run(testCase.name, func(t *testing.T) {
 			orderDomain := domains.NewTradeOrderDomain(testCase.order, calendar)
 
-			skipError := orderDomain.Skip()
+			skipError := orderDomain.Skip(dto.OrderSkipDto{SkippedBy: "owner"})
 
 			if testCase.expectedError != nil {
 				require.ErrorIs(t, skipError, testCase.expectedError)

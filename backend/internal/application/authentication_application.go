@@ -15,14 +15,12 @@ func NewAuthenticationApplication(authenticationService *service.AuthenticationS
 	return &AuthenticationApplication{authenticationService: authenticationService}
 }
 
-func (authenticationApplication *AuthenticationApplication) SignIn(
-	executionContext context.Context, signInDto dto.SignInDto,
-) (dto.AccessTokenDto, error) {
-	return authenticationApplication.authenticationService.SignIn(executionContext, signInDto)
-}
-
 func (authenticationApplication *AuthenticationApplication) IdentifyCaller(
 	executionContext context.Context, credentialDto dto.CallerCredentialDto,
 ) (dto.CallerDto, error) {
 	return authenticationApplication.authenticationService.IdentifyCaller(executionContext, credentialDto)
+}
+
+func (authenticationApplication *AuthenticationApplication) CurrentOwner() dto.OwnerDto {
+	return authenticationApplication.authenticationService.CurrentOwner()
 }

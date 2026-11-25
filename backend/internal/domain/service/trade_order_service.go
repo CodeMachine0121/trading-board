@@ -86,7 +86,9 @@ func (orderService *TradeOrderService) ReportFill(
 	return orderDto, nil
 }
 
-func (orderService *TradeOrderService) SkipOrder(executionContext context.Context, orderID string) (dto.OrderDto, error) {
+func (orderService *TradeOrderService) SkipOrder(
+	executionContext context.Context, orderID string, skipDto dto.OrderSkipDto,
+) (dto.OrderDto, error) {
 	var orderDto dto.OrderDto
 	skipError := orderService.transactionRepository.Exclusively(executionContext,
 		func(transactionContext context.Context) error {
@@ -96,10 +98,11 @@ func (orderService *TradeOrderService) SkipOrder(executionContext context.Contex
 			}
 
 			orderDomain := domains.NewTradeOrderDomain(order, orderService.calendar)
-			if skipError := orderDomain.Skip(); skipError != nil {
+			if skipError := orderDomain.Skip(skipDto); skipError != nil {
 				return skipError
 			}
-			if markError := orderService.tradeOrderRepository.MarkSkipped(transactionContext, orderID); markError != nil {
+			if markError := orderService.tradeOrderRepository.MarkSkipped(
+				transactionContext, orderID, skipDto.SkippedBy); markError != nil {
 				return markError
 			}
 			orderDto = orderDomain.ToDto()
