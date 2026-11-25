@@ -1,0 +1,98 @@
+// 全站唯一寫字面值的地方。元件一律透過 abstracts/_functions.scss 的存取函式取值。
+//
+// 台股慣例：紅色代表上漲／獲利，綠色代表下跌／虧損——與歐美相反，
+// 所以這裡用 `profit` / `loss` 命名語意，而不是 `red` / `green`。
+
+$colors: (
+  'background': #f5f6f8,
+  'surface': #fff,
+  'surface-muted': #f0f2f5,
+  'border': #e2e5ea,
+  'border-strong': #c9ced8,
+  'text': #2a303b,
+  'text-strong': #11151c,
+  'text-muted': #566072,
+  'text-inverse': #fff,
+  'primary': #3b5bdb,
+  'primary-strong': #2f4ac0,
+  'primary-soft': rgb(59 91 219 / 10%),
+  'profit': #d6293e,
+  'profit-soft': rgb(214 41 62 / 10%),
+  'loss': #11875b,
+  'loss-soft': rgb(17 135 91 / 10%),
+  'warning': #b87512,
+  'warning-soft': rgb(184 117 18 / 12%),
+  'info': #2d7ad9,
+  'info-soft': rgb(45 122 217 / 10%),
+  'neutral': #646d7e,
+  'neutral-soft': rgb(100 109 126 / 12%),
+  'danger': #c92a2a,
+  'danger-soft': rgb(201 42 42 / 9%),
+  'disabled': #e4e7ec,
+  'track': #e4e7ec,
+);
+
+$spacings: (
+  '3xs': 0.125rem,
+  '2xs': 0.25rem,
+  'xs': 0.5rem,
+  'sm': 0.75rem,
+  'md': 1rem,
+  'lg': 1.5rem,
+  'xl': 2rem,
+  '2xl': 3rem,
+);
+
+$font-sizes: (
+  'xs': 0.75rem,
+  'sm': 0.875rem,
+  'md': 1rem,
+  'lg': 1.125rem,
+  'xl': 1.375rem,
+  '2xl': 1.75rem,
+);
+
+$font-weights: (
+  'regular': 400,
+  'medium': 500,
+  'bold': 700,
+);
+
+$line-heights: (
+  'tight': 1.25,
+  'normal': 1.5,
+);
+
+$radii: (
+  'sm': 0.25rem,
+  'md': 0.5rem,
+  'lg': 0.75rem,
+  'pill': 999px,
+);
+
+$shadows: (
+  'card': 0 1px 2px rgb(17 21 28 / 6%),
+  'raised': 0 4px 12px rgb(17 21 28 / 10%),
+);
+
+$z-indices: (
+  'header': 10,
+);
+
+$durations: (
+  'fast': 120ms,
+  'normal': 200ms,
+);
+
+$font-families: (
+  'body': '-apple-system, BlinkMacSystemFont, "PingFang TC", "Noto Sans TC", "Microsoft JhengHei", sans-serif',
+  'numeric': 'ui-monospace, "SF Mono", Menlo, Consolas, monospace',
+);
+
+$control-sizes: (
+  'tap-target': 2.75rem,
+  'bar': 0.5rem,
+  'content-max': 60rem,
+  'month-label': 8rem,
+  'form-max': 26rem,
+);
