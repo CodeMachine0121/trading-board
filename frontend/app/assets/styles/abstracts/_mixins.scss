@@ -1,0 +1,42 @@
+@use 'functions' as *;
+
+// 跨元件重複出現的樣式片段集中在這裡，元件用 @include 取用，不各自複製一份。
+
+@mixin focus-ring {
+  &:focus-visible {
+    outline: 2px solid color('primary');
+    outline-offset: 2px;
+  }
+}
+
+// 用手指按的東西至少要這麼大。
+@mixin tap-target {
+  min-height: control-size('tap-target');
+}
+
+@mixin surface-card {
+  border: 1px solid color('border');
+  border-radius: radius('lg');
+  box-shadow: shadow('card');
+  background-color: color('surface');
+}
+
+// 數字用等寬字，欄位對齊時小數點才會上下對齊。
+@mixin numeric {
+  font-family: font-family('numeric');
+  font-variant-numeric: tabular-nums;
+}
+
+@mixin dense-label {
+  color: color('text-muted');
+  font-size: font-size('xs');
+}
+
+// 只給螢幕閱讀器念的字。
+@mixin visually-hidden {
+  position: absolute;
+  overflow: hidden;
+  clip-path: inset(50%);
+  width: 1px;
+  height: 1px;
+}
