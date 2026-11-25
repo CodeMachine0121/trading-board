@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import type { CredentialsDto } from '~/domain/models/dto/credentials-dto'
-import { TradingBoardError } from '~/domain/errors/trading-board-error'
+import { failureMessageOf } from '~/composables/failure-message'
 import LoginForm from '~/components/organisms/LoginForm.vue'
 
 definePageMeta({ layout: false })
@@ -19,10 +19,7 @@ async function signIn(credentialsDto: CredentialsDto): Promise<void> {
     await navigateTo('/')
   }
   catch (error: unknown) {
-    if (!(error instanceof TradingBoardError)) {
-      throw error
-    }
-    errorMessage.value = error.message
+    errorMessage.value = failureMessageOf(error)
   }
   finally {
     submitting.value = false

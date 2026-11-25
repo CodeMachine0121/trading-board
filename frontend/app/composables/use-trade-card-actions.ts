@@ -3,9 +3,7 @@ import type { TradeCardApplication } from '~/application/trade-card-application'
 import type { FillReportDto } from '~/domain/models/dto/fill-report-dto'
 import type { OrderActionDto } from '~/domain/models/dto/order-action-dto'
 import type { TradeCardDto } from '~/domain/models/dto/trade-card-dto'
-import { TradingBoardError } from '~/domain/errors/trading-board-error'
-
-const UNEXPECTED_FAILURE_MESSAGE = '發生未預期的錯誤，請重新整理'
+import { failureMessageOf } from '~/composables/failure-message'
 
 /**
  * 交易卡上「回報成交」與「略過」的那一段畫面狀態：哪一筆正在送、哪一筆失敗了、為什麼。
@@ -35,11 +33,8 @@ export function useTradeCardActions(
       onCardChanged()
     }
     catch (error: unknown) {
-      if (!(error instanceof TradingBoardError)) {
-        console.error(error)
-      }
       failedOrderId.value = orderId
-      failureMessage.value = error instanceof TradingBoardError ? error.message : UNEXPECTED_FAILURE_MESSAGE
+      failureMessage.value = failureMessageOf(error)
     }
     finally {
       busyOrderId.value = null
